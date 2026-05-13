@@ -2,14 +2,14 @@
 """
 OpenOSINT AI Agent.
 
-Implements the agentic loop using the Anthropic native tool use API.
-The agent receives a natural language prompt, decides which OSINT tools
-to call, executes them, and returns a structured final response.
+Implements the agentic loop using either:
+  - The Anthropic native tool use API (default, ``provider="anthropic"``).
+  - A local Ollama model (``provider="ollama"``).
 
-No manual JSON parsing. No ReAct loop. The model issues hard stops
-via stop_reason='tool_use' — we execute the real tool and feed back
-the actual output. Hallucination in tool results is structurally
-impossible.
+Both agents share the same ``run()`` interface and return an ``AgentResponse``.
+No manual JSON parsing.  The model issues hard stops when it needs a tool,
+the real tool executes, the output goes back.  Hallucination in tool results
+is structurally impossible.
 """
 
 from __future__ import annotations
@@ -21,20 +21,21 @@ from typing import Any
 
 import anthropic
 
-from openosint.tools.search_email import run_email_osint
-from openosint.tools.search_username import run_username_osint
-from openosint.tools.search_breach import run_breach_osint
-from openosint.tools.search_whois import run_whois_osint
-from openosint.tools.search_ip import run_ip_osint
-from openosint.tools.search_domain import run_domain_osint
 from openosint.tools.generate_dorks import run_dork_osint
+from openosint.tools.search_breach import run_breach_osint
+from openosint.tools.search_domain import run_domain_osint
+from openosint.tools.search_email import run_email_osint
+from openosint.tools.search_ip import run_ip_osint
 from openosint.tools.search_paste import run_paste_osint
 from openosint.tools.search_phone import run_phone_osint
+from openosint.tools.search_shodan import run_shodan_osint
+from openosint.tools.search_username import run_username_osint
+from openosint.tools.search_whois import run_whois_osint
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Tool definitions (Anthropic format)
+# Tool definitions — Anthropic format
 # ---------------------------------------------------------------------------
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
@@ -123,7 +124,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "target": {"type": "string", "description": "Any target: name, email, username, or domain."}
+                "target": {
+                    "type": "string",
+                    "description": "Any target: name, email, username, or domain.",
+                }
             },
             "required": ["target"],
         },
@@ -134,29 +138,56 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Email address or username to search for."}
+                "query": {
+                    "type": "string",
+                    "description": "Email address or username to search for.",
+                }
             },
             "required": ["query"],
         },
     },
     {
         "name": "search_phone",
-        "description": "Gather carrier, country, and line type data for a phone number. Use E.164 format.",
+        "description": (
+            "Gather carrier, country, and line type data for a phone number. "
+            "Use E.164 format."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "phone": {"type": "string", "description": "Target phone number in E.164 format (e.g. +14155552671)."}
+                "phone": {
+                    "type": "string",
+                    "description": "Target phone number in E.164 format (e.g. +14155552671).",
+                }
             },
             "required": ["phone"],
+        },
+    },
+    {
+        "name": "search_shodan",
+        "description": (
+            "Query Shodan for host intelligence or banner searches. "
+            "If the query looks like an IP address, performs a host lookup. "
+            "Otherwise performs a keyword/service search. Requires SHODAN_API_KEY."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "IP address for host lookup, or a Shodan search query.",
+                }
+            },
+            "required": ["query"],
         },
     },
 ]
 
 # ---------------------------------------------------------------------------
-# Tool executor
+# Tool executor (shared by both agents)
 # ---------------------------------------------------------------------------
 
-_TOOL_MAP = {
+_TOOL_MAP: dict[str, Any] = {
     "search_email":    lambda a: run_email_osint(a["email"], timeout_seconds=120),
     "search_username": lambda a: run_username_osint(a["username"], timeout_seconds=180),
     "search_breach":   lambda a: run_breach_osint(a["email"]),
@@ -166,6 +197,7 @@ _TOOL_MAP = {
     "generate_dorks":  lambda a: run_dork_osint(a["target"]),
     "search_paste":    lambda a: run_paste_osint(a["query"]),
     "search_phone":    lambda a: run_phone_osint(a["phone"]),
+    "search_shodan":   lambda a: run_shodan_osint(a["query"], timeout_seconds=30),
 }
 
 SYSTEM_PROMPT = """You are OpenOSINT, an expert OSINT analyst assistant running in a terminal.
@@ -175,7 +207,8 @@ INVESTIGATION STRATEGY:
 - For an email: run search_email and search_breach.
 - For a username: run search_username and search_paste.
 - For a domain: run search_whois and search_domain.
-- For an IP: run search_ip.
+- For an IP: run search_ip and optionally search_shodan for open ports/vulns.
+- For a Shodan query or banners: use search_shodan.
 - Chain tools intelligently: use findings from each step to decide the next.
 - Never run search_email or search_breach with a full name — only with actual email addresses.
 - Never run search_username with spaces in the name.
@@ -215,7 +248,7 @@ class AgentResponse:
 
 
 # ---------------------------------------------------------------------------
-# Agent
+# Anthropic agent
 # ---------------------------------------------------------------------------
 
 class OpenOSINTAgent:
@@ -226,7 +259,11 @@ class OpenOSINTAgent:
     can reference previous findings within a session.
     """
 
-    def __init__(self, api_key: str | None = None, model: str = "claude-sonnet-4-20250514") -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "claude-sonnet-4-20250514",
+    ) -> None:
         self.client = anthropic.Anthropic(
             api_key=api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         )
@@ -251,7 +288,7 @@ class OpenOSINTAgent:
             User message or OSINT target description.
         on_tool_call:
             Optional async callback invoked before each tool execution.
-            Signature: async def on_tool_call(name: str, input: dict) -> None
+            Signature: ``async def on_tool_call(name: str, input: dict) -> None``
 
         Returns
         -------
@@ -273,7 +310,6 @@ class OpenOSINTAgent:
                     messages=messages,
                 )
 
-                # Model finished — extract text response
                 if response.stop_reason == "end_turn":
                     text = ""
                     for block in response.content:
@@ -281,15 +317,12 @@ class OpenOSINTAgent:
                             text = block.text
                             break
 
-                    # Save assistant turn to history
                     self.history.append({
                         "role": "assistant",
                         "content": response.content,
                     })
-
                     return AgentResponse(content=text, tool_calls=tool_calls_made)
 
-                # Model wants to call tools
                 if response.stop_reason == "tool_use":
                     messages.append({
                         "role": "assistant",
@@ -304,11 +337,9 @@ class OpenOSINTAgent:
                         tool_name = block.name
                         tool_input = block.input
 
-                        # Notify the REPL so it can display progress
                         if on_tool_call is not None:
                             await on_tool_call(tool_name, tool_input)
 
-                        # Execute the real tool
                         if tool_name in _TOOL_MAP:
                             result = await _TOOL_MAP[tool_name](tool_input)
                         else:
@@ -327,7 +358,6 @@ class OpenOSINTAgent:
                     messages.append({"role": "user", "content": tool_results})
 
                 else:
-                    # Unexpected stop reason
                     break
 
         except anthropic.AuthenticationError:
@@ -341,7 +371,152 @@ class OpenOSINTAgent:
                 error="Cannot reach the Anthropic API. Check your internet connection.",
             )
         except Exception as exc:
-            logger.exception("Unexpected error in agent loop.")
+            logger.exception("Unexpected error in Anthropic agent loop.")
             return AgentResponse(content="", error=str(exc))
 
         return AgentResponse(content="", error="Unexpected agent loop exit.")
+
+
+# ---------------------------------------------------------------------------
+# Ollama agent
+# ---------------------------------------------------------------------------
+
+def _to_ollama_tools(defs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert Anthropic-format tool definitions to Ollama/OpenAI format."""
+    out = []
+    for d in defs:
+        out.append({
+            "type": "function",
+            "function": {
+                "name": d["name"],
+                "description": d["description"],
+                "parameters": d["input_schema"],
+            },
+        })
+    return out
+
+
+_OLLAMA_TOOLS = _to_ollama_tools(TOOL_DEFINITIONS)
+
+
+class OllamaAgent:
+    """
+    Stateful OSINT agent backed by a local Ollama model.
+
+    Requires the ``ollama`` Python library and a running Ollama daemon.
+    No Anthropic API key is needed.
+
+    The agent follows the same tool-use loop as ``OpenOSINTAgent``:
+    tool_use → execute real binary → feed real output back → loop until done.
+    """
+
+    def __init__(
+        self,
+        model: str = "llama3.2",
+        host: str = "http://localhost:11434",
+    ) -> None:
+        self.model = model
+        self.host = host
+        self.history: list[dict[str, Any]] = []
+
+    def clear_history(self) -> None:
+        """Reset conversation memory."""
+        self.history = []
+
+    async def run(
+        self,
+        prompt: str,
+        on_tool_call: Any = None,
+    ) -> AgentResponse:
+        """
+        Execute one agent turn via Ollama.
+
+        Parameters
+        ----------
+        prompt:
+            User message or OSINT target description.
+        on_tool_call:
+            Optional async callback — same signature as ``OpenOSINTAgent.run``.
+
+        Returns
+        -------
+        AgentResponse
+            Final text response and list of tool calls made.
+        """
+        try:
+            import ollama  # type: ignore
+        except ImportError:
+            return AgentResponse(
+                content="",
+                error=(
+                    "'ollama' library is not installed. "
+                    "Install it with: pip install ollama"
+                ),
+            )
+
+        self.history.append({"role": "user", "content": prompt})
+
+        # Prepend system message on every call; system is not stored in history
+        messages: list[Any] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *self.history,
+        ]
+        tool_calls_made: list[ToolCall] = []
+
+        try:
+            client = ollama.AsyncClient(host=self.host)
+
+            while True:
+                response = await client.chat(
+                    model=self.model,
+                    messages=messages,
+                    tools=_OLLAMA_TOOLS,
+                )
+
+                msg = response.message
+
+                if not msg.tool_calls:
+                    # Final response — no more tool calls
+                    text = msg.content or ""
+                    self.history.append({"role": "assistant", "content": text})
+                    return AgentResponse(content=text, tool_calls=tool_calls_made)
+
+                # Append assistant turn (with tool_calls) to the local messages list
+                assistant_dict: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            }
+                        }
+                        for tc in msg.tool_calls
+                    ],
+                }
+                messages.append(assistant_dict)
+
+                for tc in msg.tool_calls:
+                    tool_name = tc.function.name
+                    tool_input = dict(tc.function.arguments)
+
+                    if on_tool_call is not None:
+                        await on_tool_call(tool_name, tool_input)
+
+                    if tool_name in _TOOL_MAP:
+                        result = await _TOOL_MAP[tool_name](tool_input)
+                    else:
+                        result = f"Error: unknown tool '{tool_name}'."
+
+                    tool_calls_made.append(
+                        ToolCall(name=tool_name, input=tool_input, result=result)
+                    )
+                    logger.info(
+                        "Ollama tool executed: %s → %d chars", tool_name, len(result)
+                    )
+                    messages.append({"role": "tool", "content": result})
+
+        except Exception as exc:
+            logger.exception("Unexpected error in Ollama agent loop.")
+            return AgentResponse(content="", error=str(exc))

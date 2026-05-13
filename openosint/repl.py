@@ -6,8 +6,10 @@ A Claude Code-style terminal interface for OpenOSINT.
 Powered by prompt_toolkit for input handling and Rich for display.
 
 Usage:
-    openosint          # launches this REPL
-    openosint shell    # same
+    openosint                                  # Anthropic Claude (default)
+    openosint --provider ollama                # local Ollama model
+    openosint --provider ollama --ollama-model mistral
+    openosint --no-pdf                         # disable PDF export
 """
 
 from __future__ import annotations
@@ -23,13 +25,13 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
+from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
-from rich import box
 
-from openosint.agent import OpenOSINTAgent
+from openosint.agent import OllamaAgent, OpenOSINTAgent
 
 # ---------------------------------------------------------------------------
 # Rich console
@@ -50,10 +52,15 @@ PROMPT_STYLE = Style.from_dict({
 # Display helpers
 # ---------------------------------------------------------------------------
 
-def _print_banner() -> None:
+def _print_banner(provider: str, model: str) -> None:
+    if provider == "ollama":
+        provider_info = f"[dim]Provider: Ollama ({model})[/]"
+    else:
+        provider_info = f"[dim]Provider: Anthropic ({model})[/]"
+
     console.print()
     console.print(Panel.fit(
-        "[bold #00ff88]OpenOSINT[/] [dim]v2.3.0[/]  [dim]·[/]  [dim]MCP-native OSINT framework[/]",
+        f"[bold #00ff88]OpenOSINT[/] [dim]v2.4.0[/]  [dim]·[/]  {provider_info}",
         border_style="#1e293b",
         padding=(0, 2),
     ))
@@ -84,6 +91,7 @@ def _print_help() -> None:
             "  openosint ❯ find all accounts for johndoe99",
             "  openosint ❯ what subdomains does example.com have?",
             "  openosint ❯ check if +14155552671 is a mobile number",
+            "  openosint ❯ shodan search for apache servers in Berlin",
         ]),
         title="[bold]Help[/]",
         border_style="#1e293b",
@@ -114,6 +122,7 @@ def _print_tools() -> None:
         ("generate_dorks",  "built-in",         "Google dork URLs"),
         ("search_paste",    "psbdmp.ws",        "Pastebin dump mentions"),
         ("search_phone",    "phoneinfoga",      "Carrier, country, line type"),
+        ("search_shodan",   "Shodan API",       "Open ports, banners, CVEs"),
     ]
     for row in rows:
         table.add_row(*row)
@@ -148,16 +157,29 @@ def _print_error(message: str) -> None:
     console.print()
 
 
-def _print_config(api_key: str | None) -> None:
+def _print_config(
+    api_key: str | None,
+    provider: str,
+    model: str,
+    ollama_host: str,
+    no_pdf: bool,
+) -> None:
     masked = ("*" * 20 + api_key[-6:]) if api_key and len(api_key) > 6 else "not set"
+    rows = [
+        f"[bold]Provider:[/] {provider}",
+        f"[bold]Model:[/]    {model}",
+    ]
+    if provider == "anthropic":
+        rows.append(f"[bold]API Key:[/]  {masked}")
+    else:
+        rows.append(f"[bold]Ollama:[/]   {ollama_host}")
+    rows += [
+        f"[bold]Reports:[/]  ./reports/",
+        f"[bold]PDF:[/]      {'disabled' if no_pdf else 'enabled'}",
+    ]
     console.print()
     console.print(Panel(
-        "\n".join([
-            f"[bold]Model:[/]    claude-sonnet-4-20250514",
-            f"[bold]Provider:[/] Anthropic",
-            f"[bold]API Key:[/]  {masked}",
-            f"[bold]Reports:[/]  ./reports/",
-        ]),
+        "\n".join(rows),
         title="[bold]Configuration[/]",
         border_style="#1e293b",
         padding=(0, 2),
@@ -185,9 +207,30 @@ def _save_report(content: str) -> Path:
 class OpenOSINTRepl:
     """Interactive REPL session."""
 
-    def __init__(self, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        provider: str = "anthropic",
+        ollama_model: str = "llama3.2",
+        ollama_host: str = "http://localhost:11434",
+        no_pdf: bool = False,
+    ) -> None:
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-        self._agent = OpenOSINTAgent(api_key=self._api_key)
+        self._provider = provider
+        self._ollama_model = ollama_model
+        self._ollama_host = ollama_host
+        self._no_pdf = no_pdf
+
+        if provider == "ollama":
+            self._agent: OpenOSINTAgent | OllamaAgent = OllamaAgent(
+                model=ollama_model,
+                host=ollama_host,
+            )
+            self._display_model = ollama_model
+        else:
+            self._agent = OpenOSINTAgent(api_key=self._api_key)
+            self._display_model = "claude-sonnet-4-20250514"
+
         self._last_response: str = ""
         self._session: PromptSession = PromptSession(
             history=FileHistory(str(Path.home() / ".openosint_history")),
@@ -217,25 +260,37 @@ class OpenOSINTRepl:
             self._last_response = response.content
             _print_result(response.content)
 
-        # Auto-save if response contains a report
+        # Auto-save structured report
         if "##" in response.content and len(response.content) > 300:
             try:
                 path = _save_report(response.content)
-                console.print(f"  [dim]✓ Report saved → {path}[/]\n")
+                console.print(f"  [dim]✓ Report saved → {path}[/]")
+                if not self._no_pdf:
+                    await self._generate_pdf(path)
+                console.print()
             except Exception:
                 pass
 
+    async def _generate_pdf(self, md_path: Path) -> None:
+        try:
+            from openosint.pdf_report import generate_pdf_report
+            pdf_path = await generate_pdf_report(md_path)
+            if pdf_path:
+                console.print(f"  [dim]✓ PDF saved     → {pdf_path}[/]")
+        except Exception:
+            pass
+
     async def run(self) -> None:
         """Start the interactive REPL loop."""
-        if not self._api_key:
+        if self._provider == "anthropic" and not self._api_key:
             _print_error(
                 "ANTHROPIC_API_KEY is not set.\n"
                 "  Export it: [bold]export ANTHROPIC_API_KEY=sk-ant-...[/]\n"
-                "  Or set it in your shell profile."
+                "  Or use a local model: [bold]openosint --provider ollama[/]"
             )
             sys.exit(1)
 
-        _print_banner()
+        _print_banner(self._provider, self._display_model)
 
         while True:
             try:
@@ -251,7 +306,6 @@ class OpenOSINTRepl:
             if not user_input:
                 continue
 
-            # Built-in commands
             if user_input.lower() in ("exit", "quit", "q"):
                 console.print("\n[dim]Goodbye.[/]\n")
                 break
@@ -270,7 +324,13 @@ class OpenOSINTRepl:
                 continue
 
             if user_input.lower() == "config":
-                _print_config(self._api_key)
+                _print_config(
+                    self._api_key,
+                    self._provider,
+                    self._display_model,
+                    self._ollama_host,
+                    self._no_pdf,
+                )
                 continue
 
             if user_input.lower() == "save":
@@ -281,7 +341,6 @@ class OpenOSINTRepl:
                     console.print("  [dim]Nothing to save yet.[/]\n")
                 continue
 
-            # Everything else → agent
             await self._run_investigation(user_input)
 
 
@@ -289,9 +348,21 @@ class OpenOSINTRepl:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run_repl(api_key: str | None = None) -> None:
+def run_repl(
+    api_key: str | None = None,
+    provider: str = "anthropic",
+    ollama_model: str = "llama3.2",
+    ollama_host: str = "http://localhost:11434",
+    no_pdf: bool = False,
+) -> None:
     """Synchronous wrapper for the REPL."""
-    repl = OpenOSINTRepl(api_key=api_key)
+    repl = OpenOSINTRepl(
+        api_key=api_key,
+        provider=provider,
+        ollama_model=ollama_model,
+        ollama_host=ollama_host,
+        no_pdf=no_pdf,
+    )
     try:
         asyncio.run(repl.run())
     except KeyboardInterrupt:

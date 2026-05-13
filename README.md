@@ -35,9 +35,12 @@ openosint                                  # interactive AI REPL (default)
 openosint shell                            # same as above
 openosint email ADDRESS [-t N]             # direct email scan, no AI
 openosint username HANDLE [-t N]           # direct username scan, no AI
+openosint shodan QUERY [-t N]              # Shodan lookup, no AI
+openosint multi TARGETS                    # multi-target parallel investigation
 openosint --parallel email ADDRESS         # parallel: search_email + search_breach
 openosint --parallel username HANDLE       # parallel: search_username + search_paste
 openosint --json email ADDRESS             # JSON output
+openosint --provider ollama                # use local Ollama instead of Anthropic
 openosint [-v] [--api-key KEY]
 ```
 
@@ -51,9 +54,9 @@ openosint [-v] [--api-key KEY]
 
 **Direct CLI** — run individual OSINT tools without AI for scripting or quick lookups.
 
-**MCP Server** — expose all 9 tools to any MCP-compatible AI client (Claude Code, Claude Desktop).
+**MCP Server** — expose all 10 tools to any MCP-compatible AI client (Claude Code, Claude Desktop).
 
-The framework is built on Python `asyncio`. All external binaries run as managed subprocesses with hard timeout enforcement. The AI layer uses the Anthropic native tool use API — the model issues hard stops when it needs a tool, your code executes it, the real output goes back. Hallucination in tool results is structurally impossible.
+The framework is built on Python `asyncio`. All external binaries run as managed subprocesses with hard timeout enforcement. The AI layer uses the Anthropic native tool use API — or a local [Ollama](https://ollama.com) model (no API key required). When using Anthropic, the model issues hard stops when it needs a tool, your code executes it, the real output goes back. Hallucination in tool results is structurally impossible.
 
 ---
 
@@ -81,10 +84,19 @@ cd OpenOSINT
 pip install -e .
 ```
 
-Set your Anthropic API key:
+Set your Anthropic API key (not required when using Ollama):
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Optional: use a local Ollama model instead of Anthropic:**
+
+```bash
+# Install Ollama from https://ollama.com, then:
+ollama pull llama3.2
+pip install ollama
+openosint --provider ollama
 ```
 
 **External dependencies** (must be present in `PATH`):
@@ -104,6 +116,15 @@ If a binary is absent, the corresponding tool returns a descriptive error string
 |----------|------|---------|
 | `HIBP_API_KEY` | `search_breach` | HaveIBeenPwned API key — [get one here](https://haveibeenpwned.com/API/Key) |
 | `IPINFO_TOKEN` | `search_ip` | ipinfo.io token for higher rate limits |
+| `SHODAN_API_KEY` | `search_shodan` | Shodan API key — [get one here](https://account.shodan.io) |
+
+**Optional Python packages:**
+
+| Package | Purpose | Install |
+|---------|---------|---------|
+| `ollama` | Local LLM backend (no API key) | `pip install ollama` |
+| `shodan` | Shodan API client | `pip install shodan` |
+| `reportlab` | PDF report export | `pip install reportlab` |
 
 ---
 
@@ -168,6 +189,7 @@ Reports are auto-saved after every investigation containing structured findings.
 | `generate_dorks` | built-in | Google dork URL generation |
 | `search_paste` | psbdmp.ws | Pastebin dump mentions |
 | `search_phone` | phoneinfoga | Carrier, country, line type |
+| `search_shodan` | Shodan API | Open ports, banners, CVEs |
 
 ### search_email
 
@@ -326,6 +348,32 @@ Phone intelligence for '+14155552671':
 
 ---
 
+### search_shodan
+
+Queries the [Shodan](https://shodan.io) API. If the query is an IPv4 address, performs a host lookup (open ports, org, vulnerabilities). Otherwise performs a keyword/banner search.
+
+**MCP parameter:** `query` (string, required) — IP address or any Shodan search query
+
+**CLI:**
+```bash
+$ openosint shodan 8.8.8.8
+$ openosint shodan "apache port:80 country:DE"
+$ openosint shodan 8.8.8.8 -t 30
+```
+
+**Output:**
+```
+Shodan host intelligence for '8.8.8.8':
+[+] IP: 8.8.8.8
+[+] Org: Google LLC
+[+] Country: United States
+[+] Open ports: 53, 443
+```
+
+Requires `SHODAN_API_KEY` environment variable.
+
+---
+
 ## DIRECT CLI COMMANDS
 
 ```
@@ -338,6 +386,16 @@ username HANDLE [-t SECONDS]
 ```
 Enumerate platforms for *HANDLE* via sherlock. Default timeout: 180s.
 
+```
+shodan QUERY [-t SECONDS]
+```
+Shodan host lookup (IP) or keyword search. Default timeout: 30s. Requires `SHODAN_API_KEY`.
+
+```
+multi TARGETS
+```
+Investigate multiple targets in parallel. *TARGETS* is either a comma-separated list or a path to a file with one target per line. Maximum 10 targets. Each target gets its own report; a summary report is also generated.
+
 **Flags:**
 
 | Flag | Description |
@@ -347,6 +405,10 @@ Enumerate platforms for *HANDLE* via sherlock. Default timeout: 180s.
 | `--api-key KEY` | Anthropic API key (overrides env var). |
 | `--parallel` | Run independent complementary tools concurrently via `asyncio.gather()`. For `email`: runs `search_email` + `search_breach` in parallel. For `username`: runs `search_username` + `search_paste` in parallel. |
 | `--json` | Output results as structured JSON instead of formatted text. |
+| `--provider {anthropic,ollama}` | AI provider for the REPL (default: `anthropic`). |
+| `--ollama-model MODEL` | Ollama model name (default: `llama3.2`). |
+| `--ollama-host URL` | Ollama server URL (default: `http://localhost:11434`). |
+| `--no-pdf` | Disable automatic PDF generation alongside Markdown reports. |
 
 ---
 
@@ -423,10 +485,12 @@ $ claude
 
 | Path | Description |
 |------|-------------|
-| `openosint/agent.py` | AI agent loop (Anthropic tool use). |
+| `openosint/agent.py` | AI agent loop (Anthropic + Ollama). |
 | `openosint/repl.py` | Interactive REPL session. |
 | `openosint/mcp_server.py` | MCP server entry point (stdio). |
 | `openosint/cli.py` | CLI entry point. |
+| `openosint/pdf_report.py` | PDF report generator (reportlab). |
+| `openosint/multi_target.py` | Multi-target parallel investigation. |
 | `openosint/tools/search_email.py` | Email enumeration. |
 | `openosint/tools/search_username.py` | Username enumeration. |
 | `openosint/tools/search_breach.py` | Data breach check. |
@@ -436,6 +500,7 @@ $ claude
 | `openosint/tools/generate_dorks.py` | Google dork generator. |
 | `openosint/tools/search_paste.py` | Pastebin search. |
 | `openosint/tools/search_phone.py` | Phone intelligence. |
+| `openosint/tools/search_shodan.py` | Shodan host/search lookup. |
 | `openosint/tools/exceptions.py` | Shared exception hierarchy. |
 | `pyproject.toml` | Build configuration (PEP 621). |
 | `DISCLAIMER.md` | Legal notice and ethical use policy. |
@@ -464,4 +529,4 @@ MIT License. See [LICENSE](LICENSE).
 
 ---
 
-*OpenOSINT 2.3.0 &mdash; May 12, 2026*
+*OpenOSINT 2.4.0 &mdash; May 13, 2026*

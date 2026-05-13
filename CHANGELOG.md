@@ -7,6 +7,26 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.4.0] — 2026-05-13
+
+### Added
+
+- **Shodan integration** (`openosint/tools/search_shodan.py`): new tool `search_shodan` that performs host lookups (`api.host()`) for IP addresses or keyword banner searches (`api.search()`) for any other query. Requires `SHODAN_API_KEY` environment variable; returns a descriptive error string if absent. Available as CLI subcommand `openosint shodan QUERY [-t SECONDS]`, in the AI agent tool loop, and as an MCP tool.
+- **Ollama support** (`--provider ollama`): the AI agent loop now works with local Ollama models — no Anthropic API key required. Use `--provider ollama` (default: `llama3.2`), `--ollama-model MODEL`, and `--ollama-host URL`. The `OllamaAgent` in `agent.py` follows the same tool-use loop as the Anthropic agent: tool call → execute real binary → feed real output back → repeat until done. Requires `pip install ollama` (optional dependency).
+- **PDF report export** (`openosint/pdf_report.py`): every investigation that auto-saves a Markdown report now also generates a matching PDF (`reports/YYYY-MM-DD_HH-MM-SS_report.pdf`) using `reportlab`. The PDF includes a branded header, clean body text with monospace tool output sections, and a footer with page numbers. Generation is non-blocking (runs in a thread executor). Use `--no-pdf` to disable. Falls back silently with a log warning if `reportlab` is not installed.
+- **Multi-target investigation** (`openosint/multi_target.py`): new `openosint multi TARGETS` CLI subcommand and `investigate_multi` MCP tool. Accepts a comma-separated list of targets or a path to a file with one target per line. All targets are investigated in parallel via `asyncio.gather()`. Each gets its own report file (`reports/YYYY-MM-DD_target_report.md`); a consolidated summary is written to `reports/YYYY-MM-DD_summary.md`. Maximum 10 targets per run.
+- **New CLI flags**: `--provider`, `--ollama-model`, `--ollama-host`, `--no-pdf`.
+- **REPL**: banner now shows the active provider and model. `config` command shows provider, Ollama host, and PDF status.
+- **Test suite** (`tests/test_v240.py`): tests covering missing Shodan API key, IP detection helper, multi-target 10-target limit, target parsing from files and inline strings, and PDF file creation.
+
+### Changed
+
+- Version bumped to `2.4.0` in `pyproject.toml`, `README.md`, REPL banner, and MCP server header.
+- Agent tool definitions and `_TOOL_MAP` updated to include `search_shodan`.
+- `[project.optional-dependencies]` in `pyproject.toml` now includes `shodan`, `ollama`, `pdf`, and `all` extras.
+
+---
+
 ## [2.3.0] — 2026-05-12
 
 ### Added
@@ -71,6 +91,7 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `pyproject.toml` PEP 621 build configuration with `openosint` entry point.
 - MIT license.
 
+[2.4.0]: https://github.com/OpenOSINT/OpenOSINT/releases/tag/v2.4.0
 [2.3.0]: https://github.com/OpenOSINT/OpenOSINT/releases/tag/v2.3.0
 [2.2.0]: https://github.com/OpenOSINT/OpenOSINT/releases/tag/v2.2.0
 [2.1.0]: https://github.com/OpenOSINT/OpenOSINT/releases/tag/v2.1.0
