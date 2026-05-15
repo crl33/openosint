@@ -7,6 +7,20 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.6.0] — 2026-05-15
+
+### Added
+
+- **Persistent session history** (`openosint/session_history.py`): each REPL session is automatically saved to `~/.openosint/history/<timestamp>_session.json` when the session ends (normal exit, Ctrl-D, or crash). Each file records the timestamp, duration, prompts typed, tools used, targets investigated, and report path — no raw tool output or API keys are ever stored. At most 50 sessions are retained; the oldest file is deleted when the limit is exceeded.
+- **`openosint history` CLI command**: lists the last 10 sessions in a Rich table (columns: #, date, duration, targets, tools used, report). Supports `--all` to show all sessions, `--last N` to show the last N, `openosint history open N` to view the full session JSON plus report contents in a Rich panel, and `openosint history clear` to delete all history with a confirmation prompt.
+- **Session count hint in REPL banner**: if saved sessions exist, a one-line hint is shown at startup — `💾 N sessions saved — type 'history' to browse`. The `history` REPL command displays the last 10 sessions inline.
+
+### Changed
+
+- Version bumped to `2.6.0` in `pyproject.toml`, `README.md`, and REPL banner.
+
+---
+
 ## [2.5.0] — 2026-05-13
 
 ### Added
@@ -107,6 +121,7 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `pyproject.toml` PEP 621 build configuration with `openosint` entry point.
 - MIT license.
 
+[2.6.0]: https://github.com/OpenOSINT/OpenOSINT/releases/tag/v2.6.0
 [2.5.0]: https://github.com/OpenOSINT/OpenOSINT/releases/tag/v2.5.0
 [2.4.0]: https://github.com/OpenOSINT/OpenOSINT/releases/tag/v2.4.0
 [2.3.0]: https://github.com/OpenOSINT/OpenOSINT/releases/tag/v2.3.0

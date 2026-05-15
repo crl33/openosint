@@ -529,4 +529,4 @@ MIT License. See [LICENSE](LICENSE).
 
 ---
 
-*OpenOSINT 2.5.0 &mdash; May 13, 2026*
+*OpenOSINT 2.6.0 &mdash; May 15, 2026*

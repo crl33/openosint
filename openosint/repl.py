@@ -60,7 +60,7 @@ def _print_banner(provider: str, model: str) -> None:
 
     console.print()
     console.print(Panel.fit(
-        f"[bold #00ff88]OpenOSINT[/] [dim]v2.5.0[/]  [dim]·[/]  {provider_info}",
+        f"[bold #00ff88]OpenOSINT[/] [dim]v2.6.0[/]  [dim]·[/]  {provider_info}",
         border_style="#1e293b",
         padding=(0, 2),
     ))
@@ -85,6 +85,7 @@ def _print_help() -> None:
             "  [#00ff88]save[/]              Save last report to reports/",
             "  [#00ff88]tools[/]             List available OSINT tools",
             "  [#00ff88]config[/]            Show current configuration",
+            "  [#00ff88]history[/]           Browse saved session history",
             "  [#00ff88]help[/]              Show this message",
             "  [#00ff88]exit[/] / Ctrl-D     Exit",
             "",
@@ -235,6 +236,11 @@ class OpenOSINTRepl:
             self._display_model = "claude-sonnet-4-20250514"
 
         self._last_response: str = ""
+        self._session_start: datetime = datetime.now()
+        self._session_prompts: list[str] = []
+        self._session_tools: list[str] = []
+        self._session_targets: list[str] = []
+        self._session_report_path: str = ""
         self._session: PromptSession = PromptSession(
             history=FileHistory(str(Path.home() / ".openosint_history")),
             style=PROMPT_STYLE,
@@ -247,6 +253,8 @@ class OpenOSINTRepl:
         _print_tool_call(name, args)
 
     async def _run_investigation(self, user_input: str) -> None:
+        self._session_prompts.append(user_input)
+
         console.print()
         console.print("  [dim]Thinking...[/]")
 
@@ -259,6 +267,14 @@ class OpenOSINTRepl:
             _print_error(response.error)
             return
 
+        # Track tools and targets from this turn
+        for tc in response.tool_calls:
+            if tc.name not in self._session_tools:
+                self._session_tools.append(tc.name)
+            for v in tc.input.values():
+                if isinstance(v, str) and v not in self._session_targets:
+                    self._session_targets.append(v)
+
         if response.content:
             self._last_response = response.content
             _print_result(response.content)
@@ -267,6 +283,7 @@ class OpenOSINTRepl:
         if "##" in response.content and len(response.content) > 300:
             try:
                 path = _save_report(response.content)
+                self._session_report_path = str(path)
                 console.print(f"  [dim]✓ Report saved → {path}[/]")
                 if not self._no_pdf:
                     await self._generate_pdf(path)
@@ -283,6 +300,24 @@ class OpenOSINTRepl:
         except Exception:
             pass
 
+    def _save_session(self) -> None:
+        if not self._session_prompts:
+            return
+        from openosint.session_history import SessionRecord, save_session
+        duration = int((datetime.now() - self._session_start).total_seconds())
+        record = SessionRecord(
+            timestamp=self._session_start.strftime("%Y-%m-%dT%H:%M:%S"),
+            duration_seconds=duration,
+            prompts=self._session_prompts,
+            tools_used=self._session_tools,
+            targets=self._session_targets,
+            report_path=self._session_report_path,
+        )
+        try:
+            save_session(record)
+        except Exception:
+            pass
+
     async def run(self) -> None:
         """Start the interactive REPL loop."""
         if self._provider == "anthropic" and not self._api_key:
@@ -295,56 +330,70 @@ class OpenOSINTRepl:
 
         _print_banner(self._provider, self._display_model)
 
-        while True:
-            try:
-                raw = await self._session.prompt_async(
-                    self._get_prompt_tokens,
-                    style=PROMPT_STYLE,
-                )
-            except (EOFError, KeyboardInterrupt):
-                console.print("\n[dim]Goodbye.[/]\n")
-                break
+        from openosint.session_history import count_sessions
+        n = count_sessions()
+        if n > 0:
+            s = "s" if n != 1 else ""
+            console.print(f"  [dim]💾 {n} session{s} saved — type 'history' to browse[/]\n")
 
-            user_input = raw.strip()
-            if not user_input:
-                continue
+        try:
+            while True:
+                try:
+                    raw = await self._session.prompt_async(
+                        self._get_prompt_tokens,
+                        style=PROMPT_STYLE,
+                    )
+                except (EOFError, KeyboardInterrupt):
+                    console.print("\n[dim]Goodbye.[/]\n")
+                    break
 
-            if user_input.lower() in ("exit", "quit", "q"):
-                console.print("\n[dim]Goodbye.[/]\n")
-                break
+                user_input = raw.strip()
+                if not user_input:
+                    continue
 
-            if user_input.lower() == "help":
-                _print_help()
-                continue
+                if user_input.lower() in ("exit", "quit", "q"):
+                    console.print("\n[dim]Goodbye.[/]\n")
+                    break
 
-            if user_input.lower() == "tools":
-                _print_tools()
-                continue
+                if user_input.lower() == "help":
+                    _print_help()
+                    continue
 
-            if user_input.lower() == "clear":
-                self._agent.clear_history()
-                console.print("  [dim]Conversation memory cleared.[/]\n")
-                continue
+                if user_input.lower() == "tools":
+                    _print_tools()
+                    continue
 
-            if user_input.lower() == "config":
-                _print_config(
-                    self._api_key,
-                    self._provider,
-                    self._display_model,
-                    self._ollama_host,
-                    self._no_pdf,
-                )
-                continue
+                if user_input.lower() == "clear":
+                    self._agent.clear_history()
+                    console.print("  [dim]Conversation memory cleared.[/]\n")
+                    continue
 
-            if user_input.lower() == "save":
-                if self._last_response:
-                    path = _save_report(self._last_response)
-                    console.print(f"  [dim]✓ Saved → {path}[/]\n")
-                else:
-                    console.print("  [dim]Nothing to save yet.[/]\n")
-                continue
+                if user_input.lower() == "config":
+                    _print_config(
+                        self._api_key,
+                        self._provider,
+                        self._display_model,
+                        self._ollama_host,
+                        self._no_pdf,
+                    )
+                    continue
 
-            await self._run_investigation(user_input)
+                if user_input.lower() == "save":
+                    if self._last_response:
+                        path = _save_report(self._last_response)
+                        console.print(f"  [dim]✓ Saved → {path}[/]\n")
+                    else:
+                        console.print("  [dim]Nothing to save yet.[/]\n")
+                    continue
+
+                if user_input.lower() == "history":
+                    from openosint.session_history import display_history_table, load_sessions
+                    display_history_table(load_sessions(limit=10), console)
+                    continue
+
+                await self._run_investigation(user_input)
+        finally:
+            self._save_session()
 
 
 # ---------------------------------------------------------------------------

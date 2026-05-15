@@ -196,6 +196,32 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # history
+    history_parser = subparsers.add_parser(
+        "history",
+        help="Browse saved REPL session history.",
+    )
+    history_parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="history_all",
+        help="List all saved sessions (up to 50).",
+    )
+    history_parser.add_argument(
+        "--last",
+        type=int,
+        metavar="N",
+        dest="history_last",
+        default=None,
+        help="List last N sessions.",
+    )
+    history_sub = history_parser.add_subparsers(dest="history_action", metavar="action")
+
+    history_open = history_sub.add_parser("open", help="Open session by number from the list.")
+    history_open.add_argument("n", type=int, metavar="N", help="Session number (1-based).")
+
+    history_sub.add_parser("clear", help="Delete all session history files.")
+
     return parser
 
 
@@ -324,6 +350,55 @@ async def _handle_multi(
 
 
 # ---------------------------------------------------------------------------
+# History command handler
+# ---------------------------------------------------------------------------
+
+def _handle_history(args: argparse.Namespace) -> None:
+    import sys as _sys
+
+    from rich.console import Console as _Console
+
+    from openosint.session_history import (
+        clear_sessions,
+        display_history_table,
+        display_session_detail,
+        load_sessions,
+    )
+
+    _console = _Console()
+    action = getattr(args, "history_action", None)
+
+    if action == "open":
+        sessions = load_sessions()
+        n = args.n
+        if n < 1 or n > len(sessions):
+            _console.print(
+                f"[bold red]Error:[/] Session {n} not found "
+                f"(total saved: {len(sessions)})"
+            )
+            _sys.exit(1)
+        display_session_detail(sessions[n - 1], n, _console)
+
+    elif action == "clear":
+        confirm = input("Delete all session history? [y/N] ").strip().lower()
+        if confirm == "y":
+            deleted = clear_sessions()
+            noun = "file" if deleted == 1 else "files"
+            _console.print(f"  [dim]✓ Deleted {deleted} session {noun}.[/]\n")
+        else:
+            _console.print("  [dim]Aborted.[/]\n")
+
+    else:
+        if getattr(args, "history_all", False):
+            sessions = load_sessions()
+        elif getattr(args, "history_last", None):
+            sessions = load_sessions(limit=args.history_last)
+        else:
+            sessions = load_sessions(limit=10)
+        display_history_table(sessions, _console)
+
+
+# ---------------------------------------------------------------------------
 # Entry points
 # ---------------------------------------------------------------------------
 
@@ -362,6 +437,8 @@ async def _async_main() -> None:
         await _handle_multi(
             args.targets, api_key=getattr(args, "api_key", None), no_pdf=no_pdf
         )
+    elif args.command == "history":
+        _handle_history(args)
     else:
         parser.print_help()
         sys.exit(1)
