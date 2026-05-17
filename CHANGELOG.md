@@ -7,6 +7,26 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.8.0] — 2026-05-17
+
+### Refactor
+
+- Full clean code pass across the entire codebase: consistent naming conventions (`is_/has_/can_` booleans, verb-prefixed functions, no abbreviations), extracted module-level constants, split functions exceeding 20 lines into focused helpers, added type hints to every public signature.
+- Extracted shared subprocess execution logic into `openosint/utils.py` (`run_subprocess`, `SubprocessResult`) — eliminates duplication across four tool modules.
+- `agent.py`: extracted `_AgentRunContext` dataclass, `_extract_first_text`, `_execute_tool`, `_process_tool_turn`, `_process_ollama_tool_turn`, and `_build_ollama_assistant_message` helpers; `_MAX_TOKENS = 4096` constant; both agent `run()` methods reduced to ≤25 lines.
+- `pdf_report.py`: split `_generate_pdf_sync` (~100 lines) into `_build_pdf_styles`, `_build_pdf_story`, `_create_footer_callback`.
+- `search_whois.py`: synchronous WHOIS call now wrapped in `asyncio.wait_for` + `run_in_executor` for real timeout support; `timeout_seconds` parameter added to `run_whois_osint`.
+- All tools: explicit `timeout_seconds` propagated through agent `_TOOL_MAP` and MCP `_HANDLERS`.
+- `repl.py`, `cli.py`, `mcp_server.py`, `multi_target.py`: `no_pdf` → `is_pdf_disabled`; `parallel` → `is_parallel`; silent `except Exception: pass` blocks replaced with `logger.debug(..., exc_info=True)`.
+
+### Chore
+
+- All health checks passing: ruff, pytest (99+ tests), pip check, bandit.
+- Version bumped to `2.8.0` in `pyproject.toml`, `README.md`, banner, MCP server docstring.
+- `asyncio_default_fixture_loop_scope = "function"` added to `[tool.pytest.ini_options]`.
+
+---
+
 ## [2.7.0] — 2026-05-16
 
 ### Added

@@ -2,105 +2,45 @@
 """
 Email OSINT module.
 
-Wraps the 'holehe' binary to enumerate online services
-registered against a target email address.
+Wraps the 'holehe' binary to enumerate online services registered against a
+target email address. Returns a formatted string; never raises on failure.
 """
 
-import asyncio
-import logging
-import shutil
+from __future__ import annotations
 
-from openosint.tools.exceptions import (
-    OSINTError,
-    ToolExecutionError,
-    ToolNotFoundError,
-    ToolTimeoutError,
-)
+import logging
+
+from openosint.tools.exceptions import OSINTError, ToolExecutionError
+from openosint.utils import run_subprocess
 
 logger = logging.getLogger(__name__)
 
 _BINARY = "holehe"
 _DEFAULT_TIMEOUT = 120
+_INSTALL_HINT = "Install it with: pip install holehe"
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-async def _execute_holehe(email: str, timeout: int) -> str:
-    """
-    Execute the holehe binary asynchronously against *email*.
-
-    Parameters
-    ----------
-    email:
-        Target email address.
-    timeout:
-        Maximum wall-clock seconds before the process is killed.
-
-    Returns
-    -------
-    str
-        Raw stdout decoded as UTF-8.
-
-    Raises
-    ------
-    ToolNotFoundError
-        Binary is absent from the system PATH.
-    ToolExecutionError
-        Process exited with a non-zero return code.
-    ToolTimeoutError
-        Process did not terminate within *timeout* seconds.
-    """
-    if not shutil.which(_BINARY):
-        raise ToolNotFoundError(
-            f"'{_BINARY}' is not installed or not in PATH. "
-            "Install it with: pip install holehe"
+async def _run_holehe(email: str, timeout_seconds: int) -> str:
+    """Execute holehe against email and return raw stdout."""
+    result = await run_subprocess(
+        binary=_BINARY,
+        args=[email, "--only-used"],
+        timeout_seconds=timeout_seconds,
+        install_hint=_INSTALL_HINT,
+    )
+    if result.return_code != 0:
+        raise ToolExecutionError(
+            f"holehe exited with code {result.return_code}: {result.stderr}"
         )
-
-    command: list[str] = [_BINARY, email, "--only-used"]
-    process: asyncio.subprocess.Process | None = None
-
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=float(timeout),
-        )
-
-        if process.returncode != 0:
-            detail = stderr.decode("utf-8", errors="replace").strip()
-            raise ToolExecutionError(
-                f"holehe exited with code {process.returncode}: {detail}"
-            )
-
-        return stdout.decode("utf-8", errors="replace").strip()
-
-    except asyncio.TimeoutError:
-        if process is not None:
-            try:
-                process.kill()
-            except ProcessLookupError:
-                pass
-        raise ToolTimeoutError(
-            f"holehe scan of '{email}' timed out after {timeout}s."
-        )
+    return result.stdout
 
 
-def _format_output(raw: str, email: str) -> str:
-    """Return a structured string suitable for both CLI display and LLM consumption."""
+def _format_email_results(raw: str, email: str) -> str:
+    """Return a structured string suitable for CLI display and LLM consumption."""
     if not raw:
         return f"No registered services found for {email}."
     return f"OSINT results for '{email}':\n\n{raw}"
 
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 async def run_email_osint(
     email: str,
@@ -109,16 +49,15 @@ async def run_email_osint(
     """
     Run an email OSINT scan and return a formatted result string.
 
-    On tool-level failure the error is caught, logged, and returned
-    as a descriptive string so that callers (MCP server, CLI) can
-    relay the message without raising.
+    Calls holehe to enumerate online services registered against the target
+    email. Returns a descriptive error string on failure rather than raising.
 
     Parameters
     ----------
     email:
         Target email address.
     timeout_seconds:
-        Maximum execution time passed to the subprocess layer.
+        Maximum execution time for the holehe subprocess.
 
     Returns
     -------
@@ -126,17 +65,14 @@ async def run_email_osint(
         Formatted result string or a descriptive error message.
     """
     logger.info("Starting email OSINT scan for: %s", email)
-
     try:
-        raw = await _execute_holehe(email, timeout_seconds)
-        result = _format_output(raw, email)
+        raw = await _run_holehe(email, timeout_seconds)
+        result = _format_email_results(raw, email)
         logger.info("Email scan complete for: %s", email)
         return result
-
     except OSINTError as exc:
         logger.warning("Email scan failed: %s", exc)
         return f"Scan error: {exc}"
-
     except Exception as exc:  # pragma: no cover
         logger.exception("Unexpected error during email scan.")
         return f"Internal error: {exc}"

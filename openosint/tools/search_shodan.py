@@ -26,7 +26,8 @@ _IP_RE = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _is_ip(query: str) -> bool:
+def _is_ip_address(query: str) -> bool:
+    """Return True when query looks like an IPv4 address."""
     return bool(_IP_RE.match(query.strip()))
 
 
@@ -109,7 +110,7 @@ async def run_shodan_osint(query: str, timeout_seconds: int = _DEFAULT_TIMEOUT) 
     logger.info("Starting Shodan lookup for: %s", query)
     try:
         api = shodan.Shodan(api_key)
-        if _is_ip(query):
+        if _is_ip_address(query):
             data = api.host(query)
             result = _format_host(data, query)
         else:

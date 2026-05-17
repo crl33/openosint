@@ -43,7 +43,8 @@ _HASH_RE = re.compile(
 # Input-type detection
 # ---------------------------------------------------------------------------
 
-def _detect_type(target: str) -> str:
+def _detect_input_type(target: str) -> str:
+    """Classify target as 'ip', 'hash', 'url', or 'domain' for API routing."""
     if _IP_RE.match(target):
         return "ip"
     if _HASH_RE.match(target):
@@ -61,7 +62,8 @@ def _headers(api_key: str) -> dict[str, str]:
     return {"x-apikey": api_key, "Accept": "application/json"}
 
 
-def _check_response(response: requests.Response) -> None:
+def _validate_response(response: requests.Response) -> None:
+    """Raise a descriptive error for any non-success HTTP status."""
     if response.status_code == 401:
         raise OSINTError("Invalid VirusTotal API key.")
     if response.status_code == 429:
@@ -185,7 +187,7 @@ def _lookup_ip(api_key: str, ip: str, timeout: int) -> str:
         )
     except requests.RequestException as exc:
         raise OSINTError(f"Network error querying VirusTotal: {exc}") from exc
-    _check_response(response)
+    _validate_response(response)
     return _format_ip(response.json())
 
 
@@ -198,7 +200,7 @@ def _lookup_domain(api_key: str, domain: str, timeout: int) -> str:
         )
     except requests.RequestException as exc:
         raise OSINTError(f"Network error querying VirusTotal: {exc}") from exc
-    _check_response(response)
+    _validate_response(response)
     return _format_domain(response.json())
 
 
@@ -215,7 +217,7 @@ def _lookup_url(api_key: str, target_url: str, timeout: int) -> str:
         raise OSINTError(
             f"Network error submitting URL to VirusTotal: {exc}"
         ) from exc
-    _check_response(submit_response)
+    _validate_response(submit_response)
 
     analysis_id = submit_response.json().get("data", {}).get("id", "")
     if not analysis_id:
@@ -235,7 +237,7 @@ def _lookup_url(api_key: str, target_url: str, timeout: int) -> str:
             raise OSINTError(
                 f"Network error polling VirusTotal analysis: {exc}"
             ) from exc
-        _check_response(poll_response)
+        _validate_response(poll_response)
         poll_data = poll_response.json()
         status = (
             poll_data.get("data", {})
@@ -257,7 +259,7 @@ def _lookup_hash(api_key: str, file_hash: str, timeout: int) -> str:
         )
     except requests.RequestException as exc:
         raise OSINTError(f"Network error querying VirusTotal: {exc}") from exc
-    _check_response(response)
+    _validate_response(response)
     return _format_hash(response.json())
 
 
@@ -289,7 +291,7 @@ async def run_virustotal_osint(
         )
 
     target = target.strip()
-    input_type = _detect_type(target)
+    input_type = _detect_input_type(target)
     logger.info(
         "Starting VirusTotal lookup for: %s (type: %s)", target, input_type
     )

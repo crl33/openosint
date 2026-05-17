@@ -2,11 +2,9 @@
 """
 Data breach module.
 
-Queries the HaveIBeenPwned v3 API to check whether an email
-address appears in known public data breaches.
-
-Requires a HIBP API key: https://haveibeenpwned.com/API/Key
-Set it via the HIBP_API_KEY environment variable.
+Queries the HaveIBeenPwned v3 API to check whether an email address appears
+in known public data breaches. Requires HIBP_API_KEY environment variable.
+Returns a formatted string; never raises on failure.
 """
 
 from __future__ import annotations
@@ -21,16 +19,13 @@ from openosint.tools.exceptions import OSINTError, ToolExecutionError
 logger = logging.getLogger(__name__)
 
 _HIBP_API_URL = "https://haveibeenpwned.com/api/v3/breachedaccount/{email}"
-_TIMEOUT = 15
+_DEFAULT_TIMEOUT = 15
+_USER_AGENT = "OpenOSINT/2.8.0"
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _query_hibp(email: str) -> list[dict]:
+def _fetch_hibp_breaches(email: str, timeout_seconds: int) -> list[dict]:
     """
-    Query the HIBP v3 API for breaches associated with *email*.
+    Query the HIBP v3 API for breaches associated with email.
 
     Raises
     ------
@@ -44,10 +39,7 @@ def _query_hibp(email: str) -> list[dict]:
             "Get a key at https://haveibeenpwned.com/API/Key"
         )
 
-    headers = {
-        "hibp-api-key": api_key,
-        "user-agent": "OpenOSINT/2.3.0",
-    }
+    headers = {"hibp-api-key": api_key, "user-agent": _USER_AGENT}
     url = _HIBP_API_URL.format(email=email)
 
     try:
@@ -55,7 +47,7 @@ def _query_hibp(email: str) -> list[dict]:
             url,
             headers=headers,
             params={"truncateResponse": "false"},
-            timeout=_TIMEOUT,
+            timeout=timeout_seconds,
         )
     except requests.RequestException as exc:
         raise OSINTError(f"Network error querying HIBP: {exc}") from exc
@@ -72,37 +64,47 @@ def _query_hibp(email: str) -> list[dict]:
     return response.json()
 
 
-def _format_output(breaches: list[dict], email: str) -> str:
+def _format_breach_results(breaches: list[dict], email: str) -> str:
+    """Return a structured string describing breach findings."""
     if not breaches:
         return f"No breaches found for '{email}'."
 
     lines = [f"Found in {len(breaches)} breach(es) for '{email}':\n"]
-    for b in breaches:
-        data_classes = ", ".join(b.get("DataClasses", [])[:4])
+    for breach in breaches:
+        data_classes = ", ".join(breach.get("DataClasses", [])[:4])
         lines.append(
-            f"[+] {b['Name']} ({b.get('BreachDate', 'unknown')}) "
+            f"[+] {breach['Name']} ({breach.get('BreachDate', 'unknown')}) "
             f"— leaked: {data_classes}"
         )
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-async def run_breach_osint(email: str) -> str:
+async def run_breach_osint(
+    email: str,
+    timeout_seconds: int = _DEFAULT_TIMEOUT,
+) -> str:
     """
-    Check whether *email* appears in known data breaches via HIBP.
+    Check whether email appears in known data breaches via HIBP.
+
+    Requires HIBP_API_KEY environment variable. Returns a descriptive error
+    string on failure rather than raising.
+
+    Parameters
+    ----------
+    email:
+        Target email address.
+    timeout_seconds:
+        HTTP request timeout in seconds.
 
     Returns
     -------
     str
-        Formatted result string or descriptive error message.
+        Formatted result string or a descriptive error message.
     """
     logger.info("Starting breach check for: %s", email)
     try:
-        breaches = _query_hibp(email)
-        result = _format_output(breaches, email)
+        breaches = _fetch_hibp_breaches(email, timeout_seconds)
+        result = _format_breach_results(breaches, email)
         logger.info("Breach check complete for: %s", email)
         return result
     except OSINTError as exc:

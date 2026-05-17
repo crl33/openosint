@@ -10,9 +10,12 @@ Sensitive data (raw tool output, API keys) is never stored — only metadata.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 HISTORY_DIR = Path.home() / ".openosint" / "history"
 MAX_SESSIONS = 50
@@ -44,7 +47,7 @@ def save_session(record: SessionRecord) -> Path:
         try:
             all_files[0].unlink()
         except Exception:
-            pass
+            logger.debug("Failed to prune old session file.", exc_info=True)
         all_files = all_files[1:]
 
     return path
@@ -58,11 +61,11 @@ def load_sessions(limit: int | None = None) -> list[dict[str, Any]]:
     if limit is not None:
         files = files[:limit]
     sessions: list[dict[str, Any]] = []
-    for f in files:
+    for session_file in files:
         try:
-            sessions.append(json.loads(f.read_text(encoding="utf-8")))
+            sessions.append(json.loads(session_file.read_text(encoding="utf-8")))
         except Exception:
-            pass
+            logger.debug("Failed to read session file: %s", session_file, exc_info=True)
     return sessions
 
 
@@ -78,11 +81,11 @@ def clear_sessions() -> int:
     if not HISTORY_DIR.exists():
         return 0
     files = list(HISTORY_DIR.glob("*_session.json"))
-    for f in files:
+    for session_file in files:
         try:
-            f.unlink()
+            session_file.unlink()
         except Exception:
-            pass
+            logger.debug("Failed to delete session file: %s", session_file, exc_info=True)
     return len(files)
 
 
@@ -131,14 +134,14 @@ def display_history_table(sessions: list[dict[str, Any]], console: Any) -> None:
     table.add_column("Tools Used", style="#94a3b8")
     table.add_column("Report", style="dim")
 
-    for i, s in enumerate(sessions, 1):
+    for i, session in enumerate(sessions, 1):
         table.add_row(
             str(i),
-            s.get("timestamp", "")[:16],
-            _fmt_duration(s.get("duration_seconds", 0)),
-            _fmt_targets(s.get("targets", [])),
-            _fmt_tools(s.get("tools_used", [])),
-            "yes" if s.get("report_path") else "—",
+            session.get("timestamp", "")[:16],
+            _fmt_duration(session.get("duration_seconds", 0)),
+            _fmt_targets(session.get("targets", [])),
+            _fmt_tools(session.get("tools_used", [])),
+            "yes" if session.get("report_path") else "—",
         )
 
     console.print()

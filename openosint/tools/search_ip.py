@@ -2,11 +2,9 @@
 """
 IP intelligence module.
 
-Queries ipinfo.io to retrieve geolocation, ASN, hostname,
-and organisation data for a target IP address.
-
-Free tier: 50k requests/month, no API key required.
-Set IPINFO_TOKEN env var for higher limits.
+Queries ipinfo.io to retrieve geolocation, ASN, hostname, and organisation
+data for a target IP address. Free tier: 50k requests/month, no key required.
+Set IPINFO_TOKEN env var for higher limits. Returns a formatted string; never raises.
 """
 
 from __future__ import annotations
@@ -21,22 +19,28 @@ from openosint.tools.exceptions import OSINTError, ToolExecutionError
 logger = logging.getLogger(__name__)
 
 _IPINFO_URL = "https://ipinfo.io/{ip}/json"
-_TIMEOUT = 10
+_DEFAULT_TIMEOUT = 10
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+def _fetch_ip_data(ip: str, timeout_seconds: int) -> dict:
+    """
+    Query ipinfo.io for geolocation and ASN data for ip.
 
-def _query_ipinfo(ip: str) -> dict:
+    Raises
+    ------
+    OSINTError
+        On rate limiting or network failures.
+    ToolExecutionError
+        On unexpected HTTP status codes.
+    """
     token = os.environ.get("IPINFO_TOKEN", "")
-    params = {"token": token} if token else {}
+    params: dict = {"token": token} if token else {}
 
     try:
         response = requests.get(
             _IPINFO_URL.format(ip=ip),
             params=params,
-            timeout=_TIMEOUT,
+            timeout=timeout_seconds,
         )
     except requests.RequestException as exc:
         raise OSINTError(f"Network error querying ipinfo.io: {exc}") from exc
@@ -52,36 +56,45 @@ def _query_ipinfo(ip: str) -> dict:
     return response.json()
 
 
-def _format_output(data: dict, ip: str) -> str:
+def _format_ip_results(data: dict, ip: str) -> str:
+    """Return a structured string describing IP intelligence."""
     if "bogon" in data:
         return f"'{ip}' is a bogon/private address — no public data available."
 
     fields = ["ip", "hostname", "org", "city", "region", "country", "loc", "timezone"]
     lines = [f"IP intelligence for '{ip}':\n"]
     for field in fields:
-        val = data.get(field)
-        if val:
-            lines.append(f"[+] {field.capitalize()}: {val}")
+        value = data.get(field)
+        if value:
+            lines.append(f"[+] {field.capitalize()}: {value}")
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-async def run_ip_osint(ip: str) -> str:
+async def run_ip_osint(
+    ip: str,
+    timeout_seconds: int = _DEFAULT_TIMEOUT,
+) -> str:
     """
-    Retrieve geolocation and ASN data for *ip* via ipinfo.io.
+    Retrieve geolocation and ASN data for ip via ipinfo.io.
+
+    Returns a descriptive error string on failure rather than raising.
+
+    Parameters
+    ----------
+    ip:
+        Target IPv4 or IPv6 address.
+    timeout_seconds:
+        HTTP request timeout in seconds.
 
     Returns
     -------
     str
-        Formatted result string or descriptive error message.
+        Formatted result string or a descriptive error message.
     """
     logger.info("Starting IP lookup for: %s", ip)
     try:
-        data = _query_ipinfo(ip)
-        result = _format_output(data, ip)
+        data = _fetch_ip_data(ip, timeout_seconds)
+        result = _format_ip_results(data, ip)
         logger.info("IP lookup complete for: %s", ip)
         return result
     except OSINTError as exc:

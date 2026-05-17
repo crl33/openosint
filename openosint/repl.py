@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 from datetime import datetime
@@ -31,6 +32,27 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from openosint.agent import OllamaAgent, OpenOSINTAgent
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_MIN_REPORT_CHARS = 300
+
+_TOOL_INFO_ROWS = [
+    ("search_email",    "holehe",          "Social accounts linked to an email"),
+    ("search_username", "sherlock",         "Accounts across 300+ platforms"),
+    ("search_breach",   "HaveIBeenPwned",  "Data breach exposure"),
+    ("search_whois",    "python-whois",     "Domain registrant info"),
+    ("search_ip",       "ipinfo.io",        "Geolocation, ASN, hostname"),
+    ("search_domain",   "sublist3r",        "Subdomain enumeration"),
+    ("generate_dorks",  "built-in",         "Google dork URLs"),
+    ("search_paste",    "psbdmp.ws",        "Pastebin dump mentions"),
+    ("search_phone",    "phoneinfoga",      "Carrier, country, line type"),
+    ("search_shodan",   "Shodan API",       "Open ports, banners, CVEs"),
+]
 
 # ---------------------------------------------------------------------------
 # Rich console
@@ -59,7 +81,7 @@ def _print_banner(provider: str, model: str) -> None:
 
     console.print()
     console.print(Panel.fit(
-        f"[bold #00ff88]OpenOSINT[/] [dim]v2.7.0[/]  [dim]·[/]  {provider_info}",
+        f"[bold #00ff88]OpenOSINT[/] [dim]v2.8.0[/]  [dim]·[/]  {provider_info}",
         border_style="#1e293b",
         padding=(0, 2),
     ))
@@ -115,19 +137,7 @@ def _print_tools() -> None:
     table.add_column("Method", style="dim")
     table.add_column("Finds", style="#94a3b8")
 
-    rows = [
-        ("search_email",    "holehe",          "Social accounts linked to an email"),
-        ("search_username", "sherlock",         "Accounts across 300+ platforms"),
-        ("search_breach",   "HaveIBeenPwned",  "Data breach exposure"),
-        ("search_whois",    "python-whois",     "Domain registrant info"),
-        ("search_ip",       "ipinfo.io",        "Geolocation, ASN, hostname"),
-        ("search_domain",   "sublist3r",        "Subdomain enumeration"),
-        ("generate_dorks",  "built-in",         "Google dork URLs"),
-        ("search_paste",    "psbdmp.ws",        "Pastebin dump mentions"),
-        ("search_phone",    "phoneinfoga",      "Carrier, country, line type"),
-        ("search_shodan",   "Shodan API",       "Open ports, banners, CVEs"),
-    ]
-    for row in rows:
+    for row in _TOOL_INFO_ROWS:
         table.add_row(*row)
 
     console.print()
@@ -165,7 +175,7 @@ def _print_config(
     provider: str,
     model: str,
     ollama_host: str,
-    no_pdf: bool,
+    is_pdf_disabled: bool,
 ) -> None:
     masked = ("*" * 20 + api_key[-6:]) if api_key and len(api_key) > 6 else "not set"
     rows = [
@@ -178,7 +188,7 @@ def _print_config(
         rows.append(f"[bold]Ollama:[/]   {ollama_host}")
     rows += [
         "[bold]Reports:[/]  ./reports/",
-        f"[bold]PDF:[/]      {'disabled' if no_pdf else 'enabled'}",
+        f"[bold]PDF:[/]      {'disabled' if is_pdf_disabled else 'enabled'}",
     ]
     console.print()
     console.print(Panel(
@@ -216,13 +226,13 @@ class OpenOSINTRepl:
         provider: str = "anthropic",
         ollama_model: str = "llama3.2",
         ollama_host: str = "http://localhost:11434",
-        no_pdf: bool = False,
+        is_pdf_disabled: bool = False,
     ) -> None:
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self._provider = provider
         self._ollama_model = ollama_model
         self._ollama_host = ollama_host
-        self._no_pdf = no_pdf
+        self._is_pdf_disabled = is_pdf_disabled
 
         if provider == "ollama":
             self._agent: OpenOSINTAgent | OllamaAgent = OllamaAgent(
@@ -279,16 +289,16 @@ class OpenOSINTRepl:
             _print_result(response.content)
 
         # Auto-save structured report
-        if "##" in response.content and len(response.content) > 300:
+        if "##" in response.content and len(response.content) > _MIN_REPORT_CHARS:
             try:
                 path = _save_report(response.content)
                 self._session_report_path = str(path)
                 console.print(f"  [dim]✓ Report saved → {path}[/]")
-                if not self._no_pdf:
+                if not self._is_pdf_disabled:
                     await self._generate_pdf(path)
                 console.print()
             except Exception:
-                pass
+                logger.debug("Report save failed.", exc_info=True)
 
     async def _generate_pdf(self, md_path: Path) -> None:
         try:
@@ -297,7 +307,7 @@ class OpenOSINTRepl:
             if pdf_path:
                 console.print(f"  [dim]✓ PDF saved     → {pdf_path}[/]")
         except Exception:
-            pass
+            logger.debug("PDF generation failed.", exc_info=True)
 
     def _save_session(self) -> None:
         if not self._session_prompts:
@@ -315,7 +325,7 @@ class OpenOSINTRepl:
         try:
             save_session(record)
         except Exception:
-            pass
+            logger.debug("Session save failed.", exc_info=True)
 
     async def run(self) -> None:
         """Start the interactive REPL loop."""
@@ -373,7 +383,7 @@ class OpenOSINTRepl:
                         self._provider,
                         self._display_model,
                         self._ollama_host,
-                        self._no_pdf,
+                        self._is_pdf_disabled,
                     )
                     continue
 
@@ -404,7 +414,7 @@ def run_repl(
     provider: str = "anthropic",
     ollama_model: str = "llama3.2",
     ollama_host: str = "http://localhost:11434",
-    no_pdf: bool = False,
+    is_pdf_disabled: bool = False,
 ) -> None:
     """Synchronous wrapper for the REPL."""
     repl = OpenOSINTRepl(
@@ -412,7 +422,7 @@ def run_repl(
         provider=provider,
         ollama_model=ollama_model,
         ollama_host=ollama_host,
-        no_pdf=no_pdf,
+        is_pdf_disabled=is_pdf_disabled,
     )
     try:
         asyncio.run(repl.run())

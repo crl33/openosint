@@ -87,6 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--parallel",
         action="store_true",
+        dest="is_parallel",
         help=(
             "Run independent complementary tools concurrently using asyncio.gather(). "
             "For 'email': runs search_email + search_breach in parallel. "
@@ -123,7 +124,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-pdf",
         action="store_true",
-        dest="no_pdf",
+        dest="is_pdf_disabled",
         help="Disable automatic PDF generation alongside Markdown reports.",
     )
 
@@ -276,10 +277,10 @@ def _emit_json(data: dict | list) -> None:
 async def _handle_email(
     target: str,
     timeout: int,
-    parallel: bool = False,
+    is_parallel: bool = False,
     json_output: bool = False,
 ) -> None:
-    if parallel:
+    if is_parallel:
         print(f"[*] Email scan (parallel): {target}", file=sys.stderr)
         email_result, breach_result = await asyncio.gather(
             run_email_osint(email=target, timeout_seconds=timeout),
@@ -306,10 +307,10 @@ async def _handle_email(
 async def _handle_username(
     target: str,
     timeout: int,
-    parallel: bool = False,
+    is_parallel: bool = False,
     json_output: bool = False,
 ) -> None:
-    if parallel:
+    if is_parallel:
         print(f"[*] Username scan (parallel): {target}", file=sys.stderr)
         username_result, paste_result = await asyncio.gather(
             run_username_osint(username=target, timeout_seconds=timeout),
@@ -362,7 +363,7 @@ async def _handle_virustotal(
 async def _handle_multi(
     targets_arg: str,
     api_key: str | None = None,
-    no_pdf: bool = False,
+    is_pdf_disabled: bool = False,
 ) -> None:
     from openosint.multi_target import MAX_TARGETS, parse_targets, run_multi_target
 
@@ -378,7 +379,7 @@ async def _handle_multi(
         sys.exit(1)
 
     print(f"[*] Multi-target investigation: {len(targets)} target(s)", file=sys.stderr)
-    summary = await run_multi_target(targets, api_key=api_key, no_pdf=no_pdf)
+    summary = await run_multi_target(targets, api_key=api_key, is_pdf_disabled=is_pdf_disabled)
     _print_result(summary)
 
 
@@ -448,21 +449,21 @@ async def _async_main() -> None:
             provider=getattr(args, "provider", "anthropic"),
             ollama_model=getattr(args, "ollama_model", "llama3.2"),
             ollama_host=getattr(args, "ollama_host", "http://localhost:11434"),
-            no_pdf=getattr(args, "no_pdf", False),
+            is_pdf_disabled=getattr(args, "is_pdf_disabled", False),
         )
         return
 
-    parallel = getattr(args, "parallel", False)
+    is_parallel = getattr(args, "is_parallel", False)
     json_output = getattr(args, "json_output", False)
-    no_pdf = getattr(args, "no_pdf", False)
+    is_pdf_disabled = getattr(args, "is_pdf_disabled", False)
 
     if args.command == "email":
         await _handle_email(
-            args.target, args.timeout, parallel=parallel, json_output=json_output
+            args.target, args.timeout, is_parallel=is_parallel, json_output=json_output
         )
     elif args.command == "username":
         await _handle_username(
-            args.target, args.timeout, parallel=parallel, json_output=json_output
+            args.target, args.timeout, is_parallel=is_parallel, json_output=json_output
         )
     elif args.command == "shodan":
         await _handle_shodan(args.query, args.timeout, json_output=json_output)
@@ -470,7 +471,7 @@ async def _async_main() -> None:
         await _handle_virustotal(args.target, args.timeout, json_output=json_output)
     elif args.command == "multi":
         await _handle_multi(
-            args.targets, api_key=getattr(args, "api_key", None), no_pdf=no_pdf
+            args.targets, api_key=getattr(args, "api_key", None), is_pdf_disabled=is_pdf_disabled
         )
     elif args.command == "history":
         _handle_history(args)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openosint"
-version = "2.7.0"
+version = "2.8.0"
 description = "AI-powered OSINT agent, MCP server, and CLI. Interactive REPL + 11 tools. Anthropic Claude or local Ollama. For authorized security research use only."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -83,3 +83,4 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

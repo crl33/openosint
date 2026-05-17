@@ -6,12 +6,9 @@ and PDF report generation.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Shodan — missing API key
@@ -46,17 +43,17 @@ class TestShodanMissingKey:
 
 class TestShodanIpDetection:
     def test_valid_ip_detected(self):
-        from openosint.tools.search_shodan import _is_ip
-        assert _is_ip("8.8.8.8") is True
-        assert _is_ip("192.168.1.1") is True
-        assert _is_ip("0.0.0.0") is True
+        from openosint.tools.search_shodan import _is_ip_address
+        assert _is_ip_address("8.8.8.8") is True
+        assert _is_ip_address("192.168.1.1") is True
+        assert _is_ip_address("0.0.0.0") is True
 
     def test_non_ip_not_detected(self):
-        from openosint.tools.search_shodan import _is_ip
-        assert _is_ip("apache port:80") is False
-        assert _is_ip("example.com") is False
-        assert _is_ip("8.8.8") is False
-        assert _is_ip("") is False
+        from openosint.tools.search_shodan import _is_ip_address
+        assert _is_ip_address("apache port:80") is False
+        assert _is_ip_address("example.com") is False
+        assert _is_ip_address("8.8.8") is False
+        assert _is_ip_address("") is False
 
 
 # ---------------------------------------------------------------------------
@@ -89,12 +86,13 @@ class TestMultiTargetMaxTargets:
             instance.run = AsyncMock(return_value=AgentResponse(content="## Summary\n\nok"))
             # Should not raise ValueError
             try:
-                await run_multi_target(targets, api_key="fake-key", no_pdf=True)
+                await run_multi_target(targets, api_key="fake-key", is_pdf_disabled=True)
             except ValueError:
                 pytest.fail("ValueError raised for exactly 10 targets")
 
     def test_empty_targets_returns_message(self):
         import asyncio
+
         from openosint.multi_target import run_multi_target
         result = asyncio.run(run_multi_target([], api_key="fake"))
         assert "No targets" in result
@@ -177,7 +175,6 @@ class TestPdfReportGeneration:
 
         # Simulate reportlab import failure inside the generator
         import sys
-        import importlib
 
         original = sys.modules.get("reportlab")
         sys.modules["reportlab"] = None  # type: ignore
@@ -186,7 +183,7 @@ class TestPdfReportGeneration:
 
         # Should not raise even with reportlab missing
         try:
-            result = await generate_pdf_report(md_file)
+            await generate_pdf_report(md_file)
             # Either None or a path — both are acceptable; must not raise
         except Exception as exc:
             pytest.fail(f"generate_pdf_report raised unexpectedly: {exc}")

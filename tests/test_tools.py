@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # generate_dorks — pure computation, no external deps
 # ---------------------------------------------------------------------------
@@ -44,9 +43,6 @@ class TestSearchEmailMissingBinary:
     async def test_returns_string_when_holehe_absent(self, monkeypatch):
         import shutil
         monkeypatch.setattr(shutil, "which", lambda _: None)
-        from openosint.tools import search_email as _m
-        import importlib
-        importlib.reload(_m)
         from openosint.tools.search_email import run_email_osint
         result = await run_email_osint("test@example.com")
         assert isinstance(result, str)
@@ -63,7 +59,7 @@ class TestSearchEmailMissingBinary:
         monkeypatch.setattr(shutil, "which", lambda _: None)
         from openosint.tools.search_email import run_email_osint
         try:
-            result = await run_email_osint("test@example.com")
+            await run_email_osint("test@example.com")
         except Exception as exc:
             pytest.fail(f"run_email_osint raised unexpectedly: {exc}")
 
@@ -209,39 +205,39 @@ class TestSearchVirusTotalMissingApiKey:
 
 class TestVirusTotalInputDetection:
     def test_detects_ipv4(self):
-        from openosint.tools.search_virustotal import _detect_type
-        assert _detect_type("8.8.8.8") == "ip"
-        assert _detect_type("192.168.1.1") == "ip"
-        assert _detect_type("0.0.0.0") == "ip"
+        from openosint.tools.search_virustotal import _detect_input_type
+        assert _detect_input_type("8.8.8.8") == "ip"
+        assert _detect_input_type("192.168.1.1") == "ip"
+        assert _detect_input_type("0.0.0.0") == "ip"
 
     def test_detects_https_url(self):
-        from openosint.tools.search_virustotal import _detect_type
-        assert _detect_type("https://example.com/path") == "url"
+        from openosint.tools.search_virustotal import _detect_input_type
+        assert _detect_input_type("https://example.com/path") == "url"
 
     def test_detects_http_url(self):
-        from openosint.tools.search_virustotal import _detect_type
-        assert _detect_type("http://evil.com/malware.exe") == "url"
+        from openosint.tools.search_virustotal import _detect_input_type
+        assert _detect_input_type("http://evil.com/malware.exe") == "url"
 
     def test_detects_md5_hash(self):
-        from openosint.tools.search_virustotal import _detect_type
-        assert _detect_type("a" * 32) == "hash"
+        from openosint.tools.search_virustotal import _detect_input_type
+        assert _detect_input_type("a" * 32) == "hash"
 
     def test_detects_sha1_hash(self):
-        from openosint.tools.search_virustotal import _detect_type
-        assert _detect_type("a" * 40) == "hash"
+        from openosint.tools.search_virustotal import _detect_input_type
+        assert _detect_input_type("a" * 40) == "hash"
 
     def test_detects_sha256_hash(self):
-        from openosint.tools.search_virustotal import _detect_type
-        assert _detect_type("a" * 64) == "hash"
+        from openosint.tools.search_virustotal import _detect_input_type
+        assert _detect_input_type("a" * 64) == "hash"
 
     def test_detects_domain(self):
-        from openosint.tools.search_virustotal import _detect_type
-        assert _detect_type("example.com") == "domain"
-        assert _detect_type("evil.site.ru") == "domain"
+        from openosint.tools.search_virustotal import _detect_input_type
+        assert _detect_input_type("example.com") == "domain"
+        assert _detect_input_type("evil.site.ru") == "domain"
 
     def test_non_ip_non_hash_non_url_is_domain(self):
-        from openosint.tools.search_virustotal import _detect_type
-        assert _detect_type("openosint.github.io") == "domain"
+        from openosint.tools.search_virustotal import _detect_input_type
+        assert _detect_input_type("openosint.github.io") == "domain"
 
 
 # ---------------------------------------------------------------------------
@@ -250,19 +246,19 @@ class TestVirusTotalInputDetection:
 
 class TestSearchIpFormatting:
     def test_format_bogon(self):
-        from openosint.tools.search_ip import _format_output
-        result = _format_output({"bogon": True}, "192.168.1.1")
+        from openosint.tools.search_ip import _format_ip_results
+        result = _format_ip_results({"bogon": True}, "192.168.1.1")
         assert "bogon" in result.lower() or "private" in result.lower()
 
     def test_format_real_ip(self):
-        from openosint.tools.search_ip import _format_output
+        from openosint.tools.search_ip import _format_ip_results
         data = {
             "ip": "8.8.8.8",
             "org": "AS15169 Google LLC",
             "city": "Mountain View",
             "country": "US",
         }
-        result = _format_output(data, "8.8.8.8")
+        result = _format_ip_results(data, "8.8.8.8")
         assert "8.8.8.8" in result
         assert "Google" in result
 
@@ -273,15 +269,15 @@ class TestSearchIpFormatting:
 
 class TestSearchPasteFormatting:
     def test_format_no_results(self):
-        from openosint.tools.search_paste import _format_output
-        result = _format_output([], "johndoe")
+        from openosint.tools.search_paste import _format_paste_results
+        result = _format_paste_results([], "johndoe")
         assert "johndoe" in result
         assert "No pastes" in result or "no" in result.lower()
 
     def test_format_with_results(self):
-        from openosint.tools.search_paste import _format_output
+        from openosint.tools.search_paste import _format_paste_results
         pastes = [{"id": "abc123", "time": "2026-01-01"} for _ in range(3)]
-        result = _format_output(pastes, "test@example.com")
+        result = _format_paste_results(pastes, "test@example.com")
         assert "pastebin.com/abc123" in result
         assert "3" in result
 
@@ -292,7 +288,7 @@ class TestSearchPasteFormatting:
 
 class TestSearchWhoisFormatting:
     def test_format_no_data(self):
-        from openosint.tools.search_whois import _format_output
+        from openosint.tools.search_whois import _format_whois_results
 
         class FakeWhois:
             domain_name = None
@@ -305,11 +301,11 @@ class TestSearchWhoisFormatting:
             org = None
             country = None
 
-        result = _format_output(FakeWhois(), "example.com")
+        result = _format_whois_results(FakeWhois(), "example.com")
         assert "example.com" in result
 
     def test_format_with_registrar(self):
-        from openosint.tools.search_whois import _format_output
+        from openosint.tools.search_whois import _format_whois_results
 
         class FakeWhois:
             domain_name = "EXAMPLE.COM"
@@ -322,7 +318,7 @@ class TestSearchWhoisFormatting:
             org = None
             country = None
 
-        result = _format_output(FakeWhois(), "example.com")
+        result = _format_whois_results(FakeWhois(), "example.com")
         assert "GoDaddy" in result
 
 

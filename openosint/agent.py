@@ -35,6 +35,8 @@ from openosint.tools.search_whois import run_whois_osint
 
 logger = logging.getLogger(__name__)
 
+_MAX_TOKENS = 4096
+
 # ---------------------------------------------------------------------------
 # Tool definitions — Anthropic format
 # ---------------------------------------------------------------------------
@@ -210,17 +212,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 
 _TOOL_MAP: dict[str, Any] = {
-    "search_email":    lambda a: run_email_osint(a["email"], timeout_seconds=120),
-    "search_username": lambda a: run_username_osint(a["username"], timeout_seconds=180),
-    "search_breach":   lambda a: run_breach_osint(a["email"]),
-    "search_whois":    lambda a: run_whois_osint(a["domain"]),
-    "search_ip":       lambda a: run_ip_osint(a["ip"]),
-    "search_domain":   lambda a: run_domain_osint(a["domain"]),
-    "generate_dorks":  lambda a: run_dork_osint(a["target"]),
-    "search_paste":    lambda a: run_paste_osint(a["query"]),
-    "search_phone":    lambda a: run_phone_osint(a["phone"]),
-    "search_shodan":      lambda a: run_shodan_osint(a["query"], timeout_seconds=30),
-    "search_virustotal":  lambda a: run_virustotal_osint(a["target"], timeout_seconds=30),
+    "search_email":      lambda a: run_email_osint(a["email"], timeout_seconds=120),
+    "search_username":   lambda a: run_username_osint(a["username"], timeout_seconds=180),
+    "search_breach":     lambda a: run_breach_osint(a["email"], timeout_seconds=15),
+    "search_whois":      lambda a: run_whois_osint(a["domain"], timeout_seconds=15),
+    "search_ip":         lambda a: run_ip_osint(a["ip"], timeout_seconds=10),
+    "search_domain":     lambda a: run_domain_osint(a["domain"], timeout_seconds=120),
+    "generate_dorks":    lambda a: run_dork_osint(a["target"]),
+    "search_paste":      lambda a: run_paste_osint(a["query"], timeout_seconds=15),
+    "search_phone":      lambda a: run_phone_osint(a["phone"], timeout_seconds=60),
+    "search_shodan":     lambda a: run_shodan_osint(a["query"], timeout_seconds=30),
+    "search_virustotal": lambda a: run_virustotal_osint(a["target"], timeout_seconds=30),
 }
 
 SYSTEM_PROMPT = """You are OpenOSINT, an expert OSINT analyst assistant running in a terminal.
@@ -268,6 +270,91 @@ class AgentResponse:
     content: str
     tool_calls: list[ToolCall] = field(default_factory=list)
     error: str = ""
+
+
+@dataclass
+class _AgentRunContext:
+    """Mutable state threaded through one agent turn."""
+    messages: list[dict[str, Any]]
+    tool_calls: list[ToolCall]
+    on_tool_call: Any
+
+
+# ---------------------------------------------------------------------------
+# Shared turn helpers
+# ---------------------------------------------------------------------------
+
+def _extract_first_text(content: list[Any]) -> str:
+    """Return text from the first text block in an Anthropic content list."""
+    for block in content:
+        if hasattr(block, "text"):
+            return block.text
+    return ""
+
+
+async def _execute_tool(
+    tool_name: str,
+    tool_input: dict[str, Any],
+    on_tool_call: Any,
+) -> str:
+    """Invoke on_tool_call callback then run the tool, returning its string result."""
+    if on_tool_call is not None:
+        await on_tool_call(tool_name, tool_input)
+    if tool_name in _TOOL_MAP:
+        return await _TOOL_MAP[tool_name](tool_input)
+    return f"Error: unknown tool '{tool_name}'."
+
+
+async def _process_tool_turn(
+    ctx: _AgentRunContext,
+    response_content: list[Any],
+) -> None:
+    """Execute all tool_use blocks in one Anthropic response turn."""
+    tool_results = []
+    for block in response_content:
+        if block.type != "tool_use":
+            continue
+        result = await _execute_tool(block.name, block.input, ctx.on_tool_call)
+        ctx.tool_calls.append(ToolCall(name=block.name, input=block.input, result=result))
+        logger.info("Tool executed: %s → %d chars", block.name, len(result))
+        tool_results.append({
+            "type": "tool_result",
+            "tool_use_id": block.id,
+            "content": result,
+        })
+    ctx.messages.append({"role": "user", "content": tool_results})
+
+
+def _build_ollama_assistant_message(msg: Any) -> dict[str, Any]:
+    """Serialize an Ollama message with tool_calls into the dict format for history."""
+    return {
+        "role": "assistant",
+        "content": msg.content or "",
+        "tool_calls": [
+            {
+                "function": {
+                    "name": ollama_tool_call.function.name,
+                    "arguments": ollama_tool_call.function.arguments,
+                }
+            }
+            for ollama_tool_call in msg.tool_calls
+        ],
+    }
+
+
+async def _process_ollama_tool_turn(
+    ctx: _AgentRunContext,
+    ollama_msg: Any,
+) -> None:
+    """Execute all tool calls from one Ollama response and append results to messages."""
+    ctx.messages.append(_build_ollama_assistant_message(ollama_msg))
+    for ollama_tool_call in ollama_msg.tool_calls:
+        tool_name = ollama_tool_call.function.name
+        tool_input = dict(ollama_tool_call.function.arguments)
+        result = await _execute_tool(tool_name, tool_input, ctx.on_tool_call)
+        ctx.tool_calls.append(ToolCall(name=tool_name, input=tool_input, result=result))
+        logger.info("Ollama tool executed: %s → %d chars", tool_name, len(result))
+        ctx.messages.append({"role": "tool", "content": result})
 
 
 # ---------------------------------------------------------------------------
@@ -319,70 +406,29 @@ class OpenOSINTAgent:
             Final text response and list of tool calls made.
         """
         self.history.append({"role": "user", "content": prompt})
-
-        messages = list(self.history)
-        tool_calls_made: list[ToolCall] = []
-
+        ctx = _AgentRunContext(
+            messages=list(self.history),
+            tool_calls=[],
+            on_tool_call=on_tool_call,
+        )
         try:
             while True:
                 response = self.client.messages.create(
                     model=self.model,
-                    max_tokens=4096,
+                    max_tokens=_MAX_TOKENS,
                     system=SYSTEM_PROMPT,
                     tools=TOOL_DEFINITIONS,
-                    messages=messages,
+                    messages=ctx.messages,
                 )
-
                 if response.stop_reason == "end_turn":
-                    text = ""
-                    for block in response.content:
-                        if hasattr(block, "text"):
-                            text = block.text
-                            break
-
-                    self.history.append({
-                        "role": "assistant",
-                        "content": response.content,
-                    })
-                    return AgentResponse(content=text, tool_calls=tool_calls_made)
-
+                    text = _extract_first_text(response.content)
+                    self.history.append({"role": "assistant", "content": response.content})
+                    return AgentResponse(content=text, tool_calls=ctx.tool_calls)
                 if response.stop_reason == "tool_use":
-                    messages.append({
-                        "role": "assistant",
-                        "content": response.content,
-                    })
-
-                    tool_results = []
-                    for block in response.content:
-                        if block.type != "tool_use":
-                            continue
-
-                        tool_name = block.name
-                        tool_input = block.input
-
-                        if on_tool_call is not None:
-                            await on_tool_call(tool_name, tool_input)
-
-                        if tool_name in _TOOL_MAP:
-                            result = await _TOOL_MAP[tool_name](tool_input)
-                        else:
-                            result = f"Error: unknown tool '{tool_name}'."
-
-                        tc = ToolCall(name=tool_name, input=tool_input, result=result)
-                        tool_calls_made.append(tc)
-                        logger.info("Tool executed: %s → %d chars", tool_name, len(result))
-
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result,
-                        })
-
-                    messages.append({"role": "user", "content": tool_results})
-
+                    ctx.messages.append({"role": "assistant", "content": response.content})
+                    await _process_tool_turn(ctx, response.content)
                 else:
                     break
-
         except anthropic.AuthenticationError:
             return AgentResponse(
                 content="",
@@ -396,7 +442,6 @@ class OpenOSINTAgent:
         except Exception as exc:
             logger.exception("Unexpected error in Anthropic agent loop.")
             return AgentResponse(content="", error=str(exc))
-
         return AgentResponse(content="", error="Unexpected agent loop exit.")
 
 
@@ -406,17 +451,17 @@ class OpenOSINTAgent:
 
 def _to_ollama_tools(defs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert Anthropic-format tool definitions to Ollama/OpenAI format."""
-    out = []
-    for d in defs:
-        out.append({
+    return [
+        {
             "type": "function",
             "function": {
-                "name": d["name"],
-                "description": d["description"],
-                "parameters": d["input_schema"],
+                "name": definition["name"],
+                "description": definition["description"],
+                "parameters": definition["input_schema"],
             },
-        })
-    return out
+        }
+        for definition in defs
+    ]
 
 
 _OLLAMA_TOOLS = _to_ollama_tools(TOOL_DEFINITIONS)
@@ -478,68 +523,26 @@ class OllamaAgent:
             )
 
         self.history.append({"role": "user", "content": prompt})
-
-        # Prepend system message on every call; system is not stored in history
         messages: list[Any] = [
             {"role": "system", "content": SYSTEM_PROMPT},
             *self.history,
         ]
-        tool_calls_made: list[ToolCall] = []
+        ctx = _AgentRunContext(messages=messages, tool_calls=[], on_tool_call=on_tool_call)
 
         try:
             client = ollama.AsyncClient(host=self.host)
-
             while True:
                 response = await client.chat(
                     model=self.model,
-                    messages=messages,
+                    messages=ctx.messages,
                     tools=_OLLAMA_TOOLS,
                 )
-
                 msg = response.message
-
                 if not msg.tool_calls:
-                    # Final response — no more tool calls
                     text = msg.content or ""
                     self.history.append({"role": "assistant", "content": text})
-                    return AgentResponse(content=text, tool_calls=tool_calls_made)
-
-                # Append assistant turn (with tool_calls) to the local messages list
-                assistant_dict: dict[str, Any] = {
-                    "role": "assistant",
-                    "content": msg.content or "",
-                    "tool_calls": [
-                        {
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            }
-                        }
-                        for tc in msg.tool_calls
-                    ],
-                }
-                messages.append(assistant_dict)
-
-                for tc in msg.tool_calls:
-                    tool_name = tc.function.name
-                    tool_input = dict(tc.function.arguments)
-
-                    if on_tool_call is not None:
-                        await on_tool_call(tool_name, tool_input)
-
-                    if tool_name in _TOOL_MAP:
-                        result = await _TOOL_MAP[tool_name](tool_input)
-                    else:
-                        result = f"Error: unknown tool '{tool_name}'."
-
-                    tool_calls_made.append(
-                        ToolCall(name=tool_name, input=tool_input, result=result)
-                    )
-                    logger.info(
-                        "Ollama tool executed: %s → %d chars", tool_name, len(result)
-                    )
-                    messages.append({"role": "tool", "content": result})
-
+                    return AgentResponse(content=text, tool_calls=ctx.tool_calls)
+                await _process_ollama_tool_turn(ctx, msg)
         except Exception as exc:
             logger.exception("Unexpected error in Ollama agent loop.")
             return AgentResponse(content="", error=str(exc))

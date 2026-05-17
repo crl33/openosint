@@ -103,10 +103,10 @@ def _build_summary(results: list[tuple[str, AgentResponse]], date_prefix: str) -
 async def run_multi_target(
     targets: list[str],
     api_key: str | None = None,
-    no_pdf: bool = False,
+    is_pdf_disabled: bool = False,
 ) -> str:
     """
-    Investigate *targets* in parallel using asyncio.gather().
+    Investigate targets in parallel using asyncio.gather().
 
     Parameters
     ----------
@@ -115,7 +115,7 @@ async def run_multi_target(
         Maximum ``MAX_TARGETS`` entries.
     api_key:
         Anthropic API key.  Falls back to ``ANTHROPIC_API_KEY`` env var.
-    no_pdf:
+    is_pdf_disabled:
         When True, skip PDF generation for the summary report.
 
     Returns
@@ -152,7 +152,7 @@ async def run_multi_target(
     summary_path.write_text(summary, encoding="utf-8")
     logger.info("Summary report: %s", summary_path)
 
-    if not no_pdf:
+    if not is_pdf_disabled:
         try:
             from openosint.pdf_report import generate_pdf_report
             await generate_pdf_report(summary_path)
