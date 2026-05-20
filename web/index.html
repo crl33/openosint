@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenOSINT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background-color: var(--bg); margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-dark: #1c2128;
+    --border: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #484f58;
+    --accent: #3fb950;
+    --accent-blue: #58a6ff;
+    --red: #f85149;
+    --yellow: #d29922;
+  }
+  :root.light {
+    --bg: #ffffff;
+    --surface: #f6f8fa;
+    --surface-dark: #eaeef2;
+    --border: #d0d7de;
+    --text-primary: #1f2328;
+    --text-secondary: #636c76;
+    --text-muted: #818b98;
+    --accent: #1a7f37;
+    --accent-blue: #0969da;
+    --red: #d1242f;
+    --yellow: #9a6700;
+  }
+
+  /* Themed utility classes */
+  .bg-app          { background-color: var(--bg); }
+  .bg-surface      { background-color: var(--surface); }
+  .bg-surface-dark { background-color: var(--surface-dark); }
+  .bg-border       { background-color: var(--border); }
+  .bg-accent       { background-color: var(--accent); }
+  .bg-overlay      { background-color: rgba(0,0,0,0.5); }
+  .border-app      { border-color: var(--border); }
+  .border-accent   { border-color: var(--accent); }
+  .text-primary    { color: var(--text-primary); }
+  .text-secondary  { color: var(--text-secondary); }
+  .text-muted      { color: var(--text-muted); }
+  .text-accent     { color: var(--accent); }
+  .text-accent-blue{ color: var(--accent-blue); }
+  .text-error      { color: var(--red); }
+  .text-warning    { color: var(--yellow); }
+  .text-bg         { color: var(--bg); }
+
+  /* Hover variants */
+  .hover\:text-primary:hover     { color: var(--text-primary); }
+  .hover\:text-secondary:hover   { color: var(--text-secondary); }
+  .hover\:bg-surface:hover       { background-color: var(--surface); }
+  .hover\:bg-border-50:hover     { background-color: color-mix(in srgb, var(--border) 50%, transparent); }
+  .hover\:bg-accent-80:hover     { background-color: color-mix(in srgb, var(--accent) 80%, black); }
+  .hover\:border-accent-40:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .hover\:border-app:hover       { border-color: var(--border); }
+  .placeholder-muted::placeholder { color: var(--text-muted); }
+
+  .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace !important; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  [x-cloak] { display: none !important; }
+
+  @keyframes _spin   { to { transform: rotate(360deg); } }
+  @keyframes _fadein { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  @keyframes _blink  { 50% { opacity:0; } }
+
+  .c-spin   { animation: _spin 1s linear infinite; }
+  .c-fadein { animation: _fadein 0.15s ease; }
+  .c-blink  { animation: _blink 1s step-end infinite; }
+
+  /* markdown */
+  .md p { margin-bottom:.5em; }
+  .md p:last-child { margin-bottom:0; }
+  .md code { background:var(--surface-dark); border:1px solid var(--border); padding:.1em .3em; border-radius:3px; font-size:.83em; font-family:"JetBrains Mono",monospace; color:var(--accent); }
+  .md strong { color:var(--text-primary); font-weight:500; }
+  .md em { color:var(--text-secondary); font-style:italic; }
+  .md h1,.md h2,.md h3 { font-weight:500; color:var(--text-primary); margin:.7em 0 .3em; }
+  .md h1 { font-size:1.1em; }
+  .md h2 { font-size:1.05em; }
+  .md h3 { font-size:1em; }
+  .md ul,.md ol { padding-left:1.2em; margin-bottom:.5em; }
+  .md ul { list-style:disc; }
+  .md ol { list-style:decimal; }
+  .md li { margin-bottom:.15em; }
+  .md a { color:var(--text-secondary); text-decoration:underline; }
+  .md pre { background:var(--surface-dark); border:1px solid var(--border); padding:.65em .9em; border-radius:6px; overflow-x:auto; margin:.4em 0; }
+  .md pre code { background:none; border:none; padding:0; font-size:.8em; }
+
+  #chat-area { scroll-behavior:smooth; }
+  textarea { font-family:inherit; }
+  textarea:focus { outline:none; }
+</style>
+</head>
+
+<body class="bg-app" style="font-family:'Inter',system-ui,sans-serif;">
+<div x-data="openosint" class="h-screen flex flex-col font-sans text-sm text-primary overflow-hidden">
+
+<!-- SETTINGS MODAL -->
+<div x-show="showSettings" x-cloak
+     @click.self="showSettings = false"
+     class="fixed inset-0 z-50 bg-overlay flex items-center justify-center p-4"
+     x-transition:enter="transition ease-out duration-150"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-100"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0">
+  <div class="bg-surface border border-app rounded-lg max-w-md w-full p-6 shadow-xl max-h-[88vh] overflow-y-auto c-fadein">
+
+    <!-- header -->
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-sm font-medium">Settings</h2>
+      <button @click="showSettings = false"
+              class="w-7 h-7 flex items-center justify-center rounded-md text-muted hover:text-primary hover:bg-border-50 transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- AI backend -->
+    <p class="text-xs font-medium text-muted uppercase tracking-wider mb-3">AI Backend</p>
+    <div class="flex gap-2 mb-4">
+      <button @click="settings.chatModel = 'claude'; saveLocalSettings()"
+              :class="settings.chatModel === 'claude'
+                ? 'bg-accent text-bg border-accent'
+                : 'bg-app border-app text-secondary hover:border-app hover:text-primary'"
+              class="flex-1 px-3 py-2 rounded-md border text-xs font-medium transition-all">
+        Claude (Anthropic)
+      </button>
+      <button @click="settings.chatModel = 'ollama'; saveLocalSettings()"
+              :class="settings.chatModel === 'ollama'
+                ? 'bg-border text-primary border-app'
+                : 'bg-app border-app text-secondary hover:border-app hover:text-primary'"
+              class="flex-1 px-3 py-2 rounded-md border text-xs font-medium transition-all">
+        Ollama (local)
+      </button>
+    </div>
+
+    <div x-show="settings.chatModel === 'ollama'"
+         class="bg-app border border-app rounded-md p-4 space-y-3 mb-4">
+      <div>
+        <label class="text-muted text-xs uppercase tracking-wider block mb-1.5">Model name</label>
+        <input x-model="settings.ollamaModel" placeholder="llama3.2"
+               class="w-full bg-surface border border-app rounded-md px-3 py-2 text-sm text-primary focus:outline-none transition-colors">
+      </div>
+      <div>
+        <label class="text-muted text-xs uppercase tracking-wider block mb-1.5">Host URL</label>
+        <input x-model="settings.ollamaHost" placeholder="http://localhost:11434"
+               class="w-full bg-surface border border-app rounded-md px-3 py-2 text-sm text-primary focus:outline-none transition-colors">
+      </div>
+      <div class="flex items-center gap-3">
+        <button @click="testOllama()"
+                class="px-3 py-1.5 rounded-md border border-app text-secondary hover:text-primary text-xs transition-all">
+          Test connection
+        </button>
+        <span x-show="ollamaTestResult" x-text="ollamaTestResult"
+              :class="ollamaTestOk ? 'text-accent' : 'text-error'"
+              class="text-xs font-mono"></span>
+      </div>
+    </div>
+
+    <div class="border-t border-app my-5"></div>
+
+    <!-- API keys: primary -->
+    <p class="text-xs font-medium text-muted uppercase tracking-wider mb-3">API Keys</p>
+    <div class="space-y-3">
+      <template x-for="k in apiKeys.filter(k => k.primary)" :key="k.key">
+        <div>
+          <label class="text-secondary text-xs block mb-1" x-text="k.label"></label>
+          <div class="relative">
+            <input :type="showKeys[k.key] ? 'text' : 'password'"
+                   x-model="setupData[k.key]"
+                   :placeholder="k.placeholder"
+                   class="w-full bg-app border border-app rounded-md px-3 py-2 text-sm text-primary focus:outline-none transition-colors pr-9">
+            <button @click="showKeys[k.key] = !showKeys[k.key]"
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-secondary transition-colors">
+              <svg x-show="!showKeys[k.key]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg x-show="showKeys[k.key]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Advanced keys: collapsible -->
+    <button @click="showAdvancedKeys = !showAdvancedKeys"
+            class="flex items-center gap-1.5 text-muted hover:text-secondary text-xs mt-3 transition-colors">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+           :class="showAdvancedKeys ? 'rotate-180' : ''"
+           class="transition-transform">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+      Advanced keys
+    </button>
+    <div x-show="showAdvancedKeys" class="mt-3 space-y-3">
+      <template x-for="k in apiKeys.filter(k => !k.primary)" :key="k.key">
+        <div>
+          <label class="text-secondary text-xs block mb-1" x-text="k.label"></label>
+          <div class="relative">
+            <input :type="showKeys[k.key] ? 'text' : 'password'"
+                   x-model="setupData[k.key]"
+                   :placeholder="k.placeholder"
+                   class="w-full bg-app border border-app rounded-md px-3 py-2 text-sm text-primary focus:outline-none transition-colors pr-9">
+            <button @click="showKeys[k.key] = !showKeys[k.key]"
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-secondary transition-colors">
+              <svg x-show="!showKeys[k.key]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg x-show="showKeys[k.key]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <div class="flex items-center gap-3 mt-4">
+      <button @click="saveApiKeys()"
+              class="bg-accent hover:bg-accent-80 text-bg rounded-md px-4 py-2 text-xs font-medium transition-colors">
+        Save keys
+      </button>
+      <span x-show="setupMsg" x-text="setupMsg"
+            :class="setupOk ? 'text-accent' : 'text-error'"
+            class="text-xs font-mono"></span>
+    </div>
+
+    <!-- footer -->
+    <div class="border-t border-app mt-5 pt-4 flex items-center justify-between">
+      <span class="text-muted text-xs font-mono">OpenOSINT <span x-text="version"></span></span>
+      <a href="https://github.com/OpenOSINT/OpenOSINT" target="_blank" rel="noopener"
+         class="text-secondary hover:text-primary text-xs transition-colors">GitHub</a>
+    </div>
+  </div>
+</div>
+
+<!-- TOP BAR -->
+<header class="flex-none h-12 bg-surface border-b border-app flex items-center px-4 gap-3 z-10">
+  <!-- wordmark -->
+  <div class="flex items-center flex-none">
+    <span class="font-mono font-medium text-sm">OpenOSINT</span>
+    <span class="text-muted text-xs ml-2 font-mono" x-text="version"></span>
+  </div>
+
+  <!-- center: backend status pill -->
+  <div class="flex-1 flex justify-center">
+    <button @click="showSettings = true"
+            class="text-xs px-3 py-1 rounded-full border border-app text-secondary bg-transparent hover:text-primary transition-colors cursor-pointer">
+      <span x-show="aiBackend === 'claude'">Claude Sonnet 4.5</span>
+      <span x-show="aiBackend === 'ollama'">Ollama <span x-text="settings.ollamaModel"></span></span>
+      <span x-show="aiBackend === 'none'">Not configured</span>
+    </button>
+  </div>
+
+  <!-- right actions -->
+  <div class="flex items-center gap-1 flex-none">
+    <button @click="toggleTheme()"
+            :title="isLight ? 'Switch to dark theme' : 'Switch to light theme'"
+            class="w-8 h-8 flex items-center justify-center rounded-md text-muted hover:text-primary hover:bg-surface transition-colors">
+      <!-- sun icon shown in dark mode -->
+      <svg x-show="!isLight" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/>
+        <line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      <!-- moon icon shown in light mode -->
+      <svg x-show="isLight" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
+    <button @click="showSettings = true"
+            title="Settings"
+            class="w-8 h-8 flex items-center justify-center rounded-md text-muted hover:text-primary hover:bg-surface transition-colors">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+    <button @click="clearConversation()"
+            title="Clear conversation"
+            :disabled="messages.length === 0"
+            class="w-8 h-8 flex items-center justify-center rounded-md text-muted hover:text-primary hover:bg-surface disabled:opacity-25 disabled:cursor-not-allowed transition-colors">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<!-- CHAT AREA -->
+<div id="chat-area" class="flex-1 overflow-y-auto">
+  <div class="max-w-2xl mx-auto px-4 py-6 min-h-full flex flex-col">
+
+    <!-- empty state -->
+    <div x-show="messages.length === 0"
+         class="flex-1 flex flex-col justify-center py-16">
+      <h1 class="text-lg font-mono font-medium text-primary mb-1">OpenOSINT</h1>
+      <p class="text-muted text-sm mb-8">AI-powered OSINT investigations. Enter a target to begin.</p>
+      <div class="flex flex-wrap gap-2">
+        <template x-for="s in suggestions" :key="s.title">
+          <button @click="sendSuggestion(s.prompt)"
+                  class="border border-app rounded-md px-3 py-2 text-sm text-secondary hover:border-accent-40 hover:text-primary cursor-pointer inline-flex items-center gap-2 transition-colors bg-transparent">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" x-html="s.svgIcon"></svg>
+            <span x-text="s.title"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <!-- messages -->
+    <div x-show="messages.length > 0" class="space-y-1 pb-4">
+      <template x-for="(msg, mi) in messages" :key="mi">
+        <div class="c-fadein">
+
+          <!-- user message -->
+          <div x-show="msg.role === 'user'" class="flex flex-col items-end mb-4">
+            <p class="text-primary text-sm leading-relaxed whitespace-pre-wrap max-w-[80%] text-right" x-text="msg.content"></p>
+            <span class="text-muted text-xs mt-1 font-mono" x-text="msg.time || ''"></span>
+          </div>
+
+          <!-- assistant block -->
+          <div x-show="msg.role === 'assistant'" class="mb-6">
+            <div x-show="msg.parts.length === 0"
+                 class="flex items-center gap-1.5 text-muted text-xs font-mono">
+              <span class="inline-block c-blink">_</span>thinking
+            </div>
+            <div class="space-y-3">
+              <template x-for="(part, pi) in msg.parts" :key="pi">
+                <div>
+                  <!-- text -->
+                  <div x-show="part.type === 'text'" class="text-sm text-primary leading-relaxed">
+                    <div class="md" x-html="renderMarkdown(part.content)"></div>
+                    <span x-show="part.streaming" class="text-accent ml-0.5 inline-block c-blink">|</span>
+                  </div>
+
+                  <!-- tool card -->
+                  <div x-show="part.type === 'tool'"
+                       class="bg-surface border border-app rounded-md mb-2 overflow-hidden">
+                    <div class="px-3 py-2 flex items-center justify-between">
+                      <button @click="part.collapsed = !part.collapsed"
+                              class="flex items-center gap-2 min-w-0 flex-1 text-left">
+                        <span class="font-mono text-xs text-secondary flex-none" x-text="part.tool"></span>
+                        <span class="text-muted text-xs truncate" x-text="part.input || ''"></span>
+                      </button>
+                      <div class="flex items-center gap-2 flex-none ml-3">
+                        <span class="text-xs font-mono"
+                              :class="{
+                                'text-warning': part.status === 'running',
+                                'text-accent':  part.status === 'done',
+                                'text-error':   part.status === 'error'
+                              }">
+                          <span x-show="part.status === 'running'" class="inline-flex items-center gap-1">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="c-spin">
+                              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                            </svg>
+                            running
+                          </span>
+                          <span x-show="part.status === 'done'" x-text="part.elapsed ? part.elapsed + 's' : 'done'"></span>
+                          <span x-show="part.status === 'error'">error</span>
+                        </span>
+                        <button x-show="part.output" @click.stop="copyText(part.output)"
+                                class="text-muted hover:text-secondary transition-colors p-0.5">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                          </svg>
+                        </button>
+                        <button @click.stop="part.collapsed = !part.collapsed"
+                                class="text-muted hover:text-secondary transition-colors p-0.5">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                               :class="part.collapsed ? '' : 'rotate-180'"
+                               class="transition-transform">
+                            <polyline points="6 9 12 15 18 9"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div x-show="!part.collapsed && part.output"
+                         class="border-t border-app bg-app px-3 py-2 max-h-64 overflow-y-auto">
+                      <template x-for="(line, li) in (part.output || '').split('\n')" :key="li">
+                        <div class="font-mono text-xs leading-relaxed whitespace-pre-wrap break-all"
+                             :class="lineClass(line)"
+                             x-text="line || ' '"></div>
+                      </template>
+                    </div>
+                  </div>
+
+                </div>
+              </template>
+            </div>
+          </div>
+
+        </div>
+      </template>
+    </div>
+
+  </div>
+</div>
+
+<!-- INPUT BAR -->
+<div class="flex-none bg-app border-t border-app px-4 py-3">
+  <div class="max-w-2xl mx-auto">
+    <div class="border border-app rounded-md flex items-end gap-2 px-3 py-2 transition-colors">
+      <textarea
+        id="chat-input"
+        x-model="input"
+        @keydown.enter.exact.prevent="sendMessage()"
+        @input="autoResize($event.target)"
+        :disabled="isStreaming"
+        placeholder="Investigate a target or ask a question..."
+        rows="1"
+        style="min-height:22px; max-height:160px;"
+        class="flex-1 bg-transparent resize-none text-sm text-primary placeholder-muted overflow-y-auto font-sans leading-relaxed disabled:opacity-40"
+      ></textarea>
+      <button @click="sendMessage()"
+              :disabled="isStreaming || !input.trim()"
+              class="flex-none w-7 h-7 rounded bg-accent hover:bg-accent-80 disabled:opacity-30 disabled:cursor-not-allowed text-bg flex items-center justify-center transition-colors mb-0.5">
+        <svg x-show="!isStreaming" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+        </svg>
+        <svg x-show="isStreaming" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="c-spin">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+</div><!-- end x-data -->
+
+<!-- ALPINE COMPONENT — must come before Alpine CDN -->
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('openosint', () => ({
+    version: '2.11.0',
+    messages: [],
+    chatHistory: [],
+    input: '',
+    isStreaming: false,
+    aiBackend: 'none',
+    showSettings: false,
+    showAdvancedKeys: false,
+    setupMsg: '',
+    setupOk: false,
+    ollamaTestResult: '',
+    ollamaTestOk: false,
+    tools: [],
+    showKeys: {},
+    setupData: {},
+    isLight: false,
+
+    settings: {
+      chatModel: 'claude',
+      ollamaModel: 'llama3.2',
+      ollamaHost: 'http://localhost:11434',
+    },
+
+    suggestions: [
+      {
+        svgIcon: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/>',
+        title: 'Investigate email',
+        prompt: 'Investigate an email address — please ask me for it.',
+      },
+      {
+        svgIcon: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+        title: 'Trace username',
+        prompt: 'Trace a username across social platforms — please ask me for it.',
+      },
+      {
+        svgIcon: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+        title: 'Analyze IP',
+        prompt: 'Analyze an IP address for geolocation and threat intel — please ask me for it.',
+      },
+      {
+        svgIcon: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>',
+        title: 'Domain lookup',
+        prompt: 'Gather intelligence on a domain — please ask me for it.',
+      },
+    ],
+
+    apiKeys: [
+      { key: 'ANTHROPIC_API_KEY',   label: 'Anthropic API Key',      placeholder: 'sk-ant-api03-...',      primary: true  },
+      { key: 'HIBP_API_KEY',        label: 'HaveIBeenPwned API Key', placeholder: 'your-hibp-key',         primary: false },
+      { key: 'IPINFO_TOKEN',        label: 'IPInfo Token',           placeholder: 'your-ipinfo-token',     primary: false },
+      { key: 'IP2LOCATION_API_KEY', label: 'IP2Location API Key',    placeholder: 'your-ip2location-key',  primary: false },
+      { key: 'CENSYS_API_ID',       label: 'Censys API ID',          placeholder: 'censys-api-id',         primary: false },
+      { key: 'CENSYS_SECRET',       label: 'Censys API Secret',      placeholder: 'censys-api-secret',     primary: false },
+      { key: 'SHODAN_API_KEY',      label: 'Shodan API Key',         placeholder: 'your-shodan-key',       primary: false },
+      { key: 'VIRUSTOTAL_API_KEY',  label: 'VirusTotal API Key',     placeholder: 'your-virustotal-key',   primary: false },
+    ],
+
+    // lifecycle
+    init() {
+      this.loadSettings();
+      const theme = localStorage.getItem('openosint-theme') || 'dark';
+      this.isLight = theme === 'light';
+      if (this.isLight) document.documentElement.classList.add('light');
+      this.$nextTick(() => {
+        this.fetchHealth();
+        document.getElementById('chat-input')?.focus();
+      });
+    },
+
+    // theme toggle
+    toggleTheme() {
+      this.isLight = !this.isLight;
+      if (this.isLight) {
+        document.documentElement.classList.add('light');
+        localStorage.setItem('openosint-theme', 'light');
+      } else {
+        document.documentElement.classList.remove('light');
+        localStorage.setItem('openosint-theme', 'dark');
+      }
+    },
+
+    // settings persistence
+    loadSettings() {
+      try {
+        const s = localStorage.getItem('openosint_settings');
+        if (s) Object.assign(this.settings, JSON.parse(s));
+      } catch {}
+    },
+
+    saveLocalSettings() {
+      try { localStorage.setItem('openosint_settings', JSON.stringify(this.settings)); } catch {}
+    },
+
+    // health / tools
+    async fetchHealth() {
+      try {
+        const r = await fetch('/api/health');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.version   = d.version    || this.version;
+        this.aiBackend = d.ai_backend || 'none';
+        if (d.ollama_host) this.settings.ollamaHost = d.ollama_host;
+        if (this.aiBackend === 'ollama') this.settings.chatModel = 'ollama';
+        else if (this.aiBackend === 'claude') this.settings.chatModel = 'claude';
+        this.fetchTools();
+      } catch {}
+    },
+
+    async fetchTools() {
+      try {
+        const r = await fetch('/api/tools');
+        if (r.ok) this.tools = await r.json();
+      } catch {}
+    },
+
+    // messaging
+    sendSuggestion(prompt) {
+      this.input = prompt;
+      this.sendMessage();
+    },
+
+    async sendMessage() {
+      const text = this.input.trim();
+      if (!text || this.isStreaming) return;
+
+      try {
+        const testResp = await fetch('/api/chat/test');
+        if (testResp.ok) {
+          const td = await testResp.json();
+          this.aiBackend = td.backend || 'none';
+        }
+      } catch {}
+
+      if (this.aiBackend === 'none') {
+        this._pushError('No AI backend configured. Add your ANTHROPIC_API_KEY in Settings, or start Ollama and select it as the backend.');
+        return;
+      }
+
+      this.input = '';
+      this.$nextTick(() => {
+        const ta = document.getElementById('chat-input');
+        if (ta) { ta.style.height = 'auto'; ta.style.height = '22px'; }
+      });
+
+      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      this.messages.push({ role: 'user', content: text, time: now });
+      this.chatHistory.push({ role: 'user', content: text });
+
+      const aiMsg = { role: 'assistant', parts: [] };
+      this.messages.push(aiMsg);
+      this.isStreaming = true;
+      this.scrollToBottom();
+
+      const payload = {
+        message: text,
+        history: this.chatHistory.slice(0, -1),
+        model: this.settings.chatModel,
+        ollama_model: this.settings.ollamaModel,
+        ollama_host: this.settings.ollamaHost,
+      };
+
+      let fullText = '';
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+          let errDetail = `HTTP ${resp.status}`;
+          try { const e = await resp.json(); errDetail += ': ' + (e.detail || JSON.stringify(e)); } catch {}
+          aiMsg.parts.push({ type: 'text', content: `Server error: ${errDetail}`, streaming: false });
+          this.isStreaming = false;
+          return;
+        }
+
+        if (!resp.body) {
+          aiMsg.parts.push({ type: 'text', content: 'Error: response body is null (browser may not support streaming).', streaming: false });
+          this.isStreaming = false;
+          return;
+        }
+
+        const reader  = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let curText = null;
+        let gotEvent = false;
+
+        const flushText = () => { if (curText) { curText.streaming = false; curText = null; } };
+
+        outer: while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (!raw) continue;
+            let evt;
+            try { evt = JSON.parse(raw); } catch (e) { console.warn('SSE parse error:', line, e); continue; }
+            gotEvent = true;
+
+            if (evt.type === 'text') {
+              if (!curText) {
+                curText = { type: 'text', content: '', streaming: true };
+                aiMsg.parts.push(curText);
+              }
+              curText.content += evt.content;
+              fullText += evt.content;
+              this.scrollToBottom();
+
+            } else if (evt.type === 'tool_start') {
+              flushText();
+              aiMsg.parts.push({
+                type: 'tool', tool: evt.tool, input: evt.input || '',
+                status: 'running', output: '', elapsed: null, collapsed: false,
+              });
+              this.scrollToBottom();
+
+            } else if (evt.type === 'tool_result') {
+              const card = [...aiMsg.parts].reverse().find(
+                p => p.type === 'tool' && p.tool === evt.tool && p.status === 'running'
+              );
+              if (card) { card.output = evt.output || ''; card.elapsed = evt.elapsed; card.status = 'done'; }
+              this.scrollToBottom();
+
+            } else if (evt.type === 'done') {
+              flushText(); break outer;
+
+            } else if (evt.type === 'error') {
+              flushText();
+              aiMsg.parts.push({ type: 'text', content: `Error: ${evt.message}`, streaming: false });
+              break outer;
+            }
+          }
+        }
+        flushText();
+        if (!gotEvent) {
+          aiMsg.parts.push({ type: 'text', content: 'No response received from backend.', streaming: false });
+        }
+
+        if (fullText.trim()) {
+          this.chatHistory.push({ role: 'assistant', content: fullText.trim() });
+        } else if (aiMsg.parts.some(p => p.type === 'tool')) {
+          const summary = aiMsg.parts.filter(p => p.type === 'tool')
+            .map(p => `[Used ${p.tool} on "${p.input}"]`).join(' ');
+          this.chatHistory.push({ role: 'assistant', content: summary });
+        }
+
+      } catch (err) {
+        aiMsg.parts.push({ type: 'text', content: `Connection error: ${err.message}`, streaming: false });
+      }
+
+      this.isStreaming = false;
+      this.scrollToBottom();
+    },
+
+    _pushError(msg) {
+      this.messages.push({ role: 'assistant', parts: [{ type: 'text', content: msg, streaming: false }] });
+    },
+
+    // UI helpers
+    clearConversation() { this.messages = []; this.chatHistory = []; },
+
+    scrollToBottom() {
+      this.$nextTick(() => {
+        const el = document.getElementById('chat-area');
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+
+    autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    },
+
+    copyText(text) { navigator.clipboard.writeText(text || '').catch(() => {}); },
+
+    lineClass(text) {
+      if (!text) return 'text-muted';
+      if (text.startsWith('[+]'))                                         return 'text-accent';
+      if (text.startsWith('[-]') || text.startsWith('Scan error:') ||
+          text.startsWith('Error:') || text.startsWith('Internal error:')) return 'text-error';
+      if (text.startsWith('[!]') || text.includes('FLAGGED'))             return 'text-warning';
+      if (text.startsWith('[*]') || text.startsWith('[Censys]') ||
+          text.startsWith('[Shodan]') || text.startsWith('[VirusTotal]') ||
+          text.startsWith('[IP2Location]'))                                return 'text-secondary';
+      return 'text-muted';
+    },
+
+    renderMarkdown(text) {
+      if (!text) return '';
+      let h = text
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/```([\s\S]*?)```/g, (_,inner) => {
+          const code = inner.replace(/^[^\n]*\n/,'');
+          return `<pre><code>${code}</code></pre>`;
+        })
+        .replace(/`([^`\n]+)`/g,        '<code>$1</code>')
+        .replace(/\*\*([^*\n]+)\*\*/g,  '<strong>$1</strong>')
+        .replace(/\*([^*\n]+)\*/g,      '<em>$1</em>')
+        .replace(/^### (.+)$/gm,        '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm,         '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm,          '<h1>$1</h1>')
+        .replace(/^[*\-] (.+)$/gm,      '<li>$1</li>')
+        .replace(/^\d+\. (.+)$/gm,      '<li>$1</li>')
+        .replace(/(<li>[\s\S]*?<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+        .replace(/\n\n+/g, '</p><p>')
+        .replace(/\n/g,    '<br>');
+
+      if (!h.startsWith('<h') && !h.startsWith('<ul') && !h.startsWith('<pre'))
+        h = `<p>${h}</p>`;
+      return h;
+    },
+
+    // API key save
+    async saveApiKeys() {
+      this.setupMsg = '';
+      const body = {};
+      for (const k of this.apiKeys) {
+        const v = (this.setupData[k.key] || '').trim();
+        if (v) body[k.key] = v;
+      }
+      if (!Object.keys(body).length) {
+        this.setupOk = false; this.setupMsg = 'Enter at least one key.'; return;
+      }
+      try {
+        const r = await fetch('/api/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) throw new Error('Save failed');
+        this.setupData = {};
+        this.setupOk = true; this.setupMsg = 'Saved';
+        await this.fetchHealth();
+        setTimeout(() => { this.setupMsg = ''; }, 3000);
+      } catch (e) {
+        this.setupOk = false; this.setupMsg = e.message || 'Failed to save.';
+      }
+    },
+
+    // Ollama test
+    async testOllama() {
+      this.ollamaTestResult = 'Testing...';
+      this.ollamaTestOk = false;
+      try {
+        const r = await fetch(this.settings.ollamaHost.replace(/\/$/, '') + '/api/tags', {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (r.ok) { this.ollamaTestOk = true; this.ollamaTestResult = 'Connected'; }
+        else        { this.ollamaTestResult = `HTTP ${r.status}`; }
+      } catch (e) {
+        this.ollamaTestResult = e.message;
+      }
+    },
+  }));
+});
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</body>
+</html>

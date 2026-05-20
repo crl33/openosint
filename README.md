@@ -1,5 +1,8 @@
 # OPENOSINT(1) &mdash; General Commands Manual
 
+> **Web Interface** — Run `openosint web` to launch the AI chat interface in your browser.
+> Hosted version coming soon at openosint.tech/app
+
 <div align="center">
   <img src="docs/logo.svg" alt="OpenOSINT" width="320">
 </div>
@@ -20,6 +23,8 @@
 <div align="center">
   <img src="assets/demo.gif" alt="OpenOSINT demo" width="700">
 </div>
+
+> *Web interface demo: run `openosint web` and open http://localhost:8080*
 
 ---
 
@@ -110,6 +115,43 @@ ollama pull llama3.2
 pip install ollama
 openosint --provider ollama
 ```
+
+## WEB INTERFACE
+
+A browser-based AI chat interface for all 13 OSINT tools with real-time streaming output, tool result cards, and light/dark theme.
+
+### Local
+
+```bash
+pip install "openosint[web]"
+openosint web
+# Opens http://localhost:8080 automatically
+```
+
+**Features:** AI chat, tool results inline, light/dark theme toggle, conversation history, API key management in Settings.
+
+**Ollama (local inference, no API key required):**
+
+```bash
+# Install Ollama from https://ollama.com, then:
+ollama pull llama3.2
+openosint web
+# In the web UI: Settings → Ollama (local) → set model to llama3.2
+```
+
+> **Coming soon:** A hosted version at openosint.tech/app is in development. Currently the web interface runs locally only.
+
+### Docker
+
+```bash
+docker compose up
+```
+
+### Self-hosted (DigitalOcean App Platform)
+
+See [`.do/app.yaml`](.do/app.yaml) for App Platform configuration.
+
+---
 
 **External dependencies** (must be present in `PATH`):
 

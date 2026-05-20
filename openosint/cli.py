@@ -264,6 +264,24 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # web
+    web_cmd = subparsers.add_parser(
+        "web",
+        help="Start the web server (opens browser automatically).",
+    )
+    web_cmd.add_argument(
+        "--port", type=int, default=8080, metavar="PORT",
+        help="Port to listen on (default: 8080).",
+    )
+    web_cmd.add_argument(
+        "--host", type=str, default="0.0.0.0", metavar="HOST",
+        help="Host/IP to bind to (default: 0.0.0.0).",
+    )
+    web_cmd.add_argument(
+        "--no-browser", action="store_true", dest="no_browser",
+        help="Do not open a browser tab automatically.",
+    )
+
     # history
     history_parser = subparsers.add_parser(
         "history",
@@ -457,6 +475,28 @@ async def _handle_multi(
 
 
 # ---------------------------------------------------------------------------
+# Web server handler
+# ---------------------------------------------------------------------------
+
+async def _handle_web(
+    host: str = "0.0.0.0",
+    port: int = 8080,
+    no_browser: bool = False,
+) -> None:
+    import threading
+    import webbrowser
+
+    from openosint.web_server import serve_async
+
+    if not no_browser:
+        display = "localhost" if host in ("0.0.0.0", "") else host
+        url = f"http://{display}:{port}"
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+
+    await serve_async(host=host, port=port)
+
+
+# ---------------------------------------------------------------------------
 # History command handler
 # ---------------------------------------------------------------------------
 
@@ -552,6 +592,12 @@ async def _async_main() -> None:
     elif args.command == "multi":
         await _handle_multi(
             args.targets, api_key=getattr(args, "api_key", None), is_pdf_disabled=is_pdf_disabled
+        )
+    elif args.command == "web":
+        await _handle_web(
+            host=getattr(args, "host", "0.0.0.0"),
+            port=getattr(args, "port", 8080),
+            no_browser=getattr(args, "no_browser", False),
         )
     elif args.command == "history":
         _handle_history(args)

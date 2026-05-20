@@ -1,14 +1,9 @@
 services:
   openosint:
     build: .
-    image: openosint:latest
-    environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - HIBP_API_KEY=${HIBP_API_KEY:-}
-      - IPINFO_TOKEN=${IPINFO_TOKEN:-}
-      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
-      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-}
+    ports:
+      - "8080:8080"
+    env_file: .env
     volumes:
       - ./reports:/app/reports
-    stdin_open: true
-    tty: true
+      - ./.env:/app/.env
