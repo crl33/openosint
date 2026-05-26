@@ -6,15 +6,12 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - name: Install mcp-publisher
-        run: pip install mcp-publisher
+        run: brew install mcp-publisher
       - name: Publish to MCP Registry
-        run: mcp-publisher publish
+        run: mcp-publisher publish .mcp/server.json
         env:
           MCP_PUBLISHER_TOKEN: ${{ secrets.MCP_PUBLISHER_TOKEN }}
