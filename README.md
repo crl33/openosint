@@ -1,7 +1,8 @@
+mcp-name: io.github.OpenOSINT/openosint
+
 <div align="center">
   <img src="docs/logo.svg" alt="OpenOSINT" width="200" />
   <h1>OpenOSINT</h1>
-<!-- mcp-name: io.github.OpenOSINT/openosint -->
   <p><strong>AI-powered OSINT agent. Interactive REPL · CLI · MCP Server · Web UI</strong></p>
   <p>16 tools. Powered by Anthropic Claude or local Ollama. For authorized security research only.</p>
 </div>
