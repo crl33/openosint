@@ -55,6 +55,8 @@ openosint-mcp = "openosint.mcp_server:main"
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "pytest-cov>=7.1.0",
+    "pytest-freezegun>=0.4.2",
     "ruff>=0.1.0",
 ]
 shodan = [

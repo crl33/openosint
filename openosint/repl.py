@@ -31,6 +31,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from openosint import __version__
 from openosint.agent import OllamaAgent, OpenOSINTAgent
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,12 @@ _TOOL_INFO_ROWS = [
     ("search_paste", "psbdmp.ws", "Pastebin dump mentions"),
     ("search_phone", "phoneinfoga", "Carrier, country, line type"),
     ("search_shodan", "Shodan API", "Open ports, banners, CVEs"),
+    ("search_virustotal", "VirusTotal API", "IP/domain/URL/hash threat analysis"),
+    ("search_censys", "Censys API", "Internet infrastructure & certs"),
+    ("search_ip2location", "IP2Location.io", "Enhanced IP geolocation & VPN/proxy detection"),
+    ("search_abuseipdb", "AbuseIPDB API", "IP abuse confidence score"),
+    ("search_github", "GitHub API", "Profile, repos, commit-email discovery"),
+    ("search_dns", "dnspython", "DNS records & email security audit"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -85,7 +92,7 @@ def _print_banner(provider: str, model: str) -> None:
     console.print()
     console.print(
         Panel.fit(
-            f"[bold #00ff88]OpenOSINT[/] [dim]v2.8.0[/]  [dim]·[/]  {provider_info}",
+            f"[bold #00ff88]OpenOSINT[/] [dim]v{__version__}[/]  [dim]·[/]  {provider_info}",
             border_style="#1e293b",
             padding=(0, 2),
         )
@@ -423,29 +430,3 @@ class OpenOSINTRepl:
                 await self._run_investigation(user_input)
         finally:
             self._save_session()
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-
-def run_repl(
-    api_key: str | None = None,
-    provider: str = "anthropic",
-    ollama_model: str = "llama3.2",
-    ollama_host: str = "http://localhost:11434",
-    is_pdf_disabled: bool = False,
-) -> None:
-    """Synchronous wrapper for the REPL."""
-    repl = OpenOSINTRepl(
-        api_key=api_key,
-        provider=provider,
-        ollama_model=ollama_model,
-        ollama_host=ollama_host,
-        is_pdf_disabled=is_pdf_disabled,
-    )
-    try:
-        asyncio.run(repl.run())
-    except KeyboardInterrupt:
-        pass

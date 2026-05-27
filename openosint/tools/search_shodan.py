@@ -10,6 +10,7 @@ Requires SHODAN_API_KEY environment variable.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -108,14 +109,22 @@ async def run_shodan_osint(query: str, timeout_seconds: int = _DEFAULT_TIMEOUT) 
     try:
         api = shodan.Shodan(api_key)
         if _is_ip_address(query):
-            data = api.host(query)
+            data = await asyncio.wait_for(
+                asyncio.to_thread(api.host, query),
+                timeout=float(timeout_seconds),
+            )
             result = _format_host(data, query)
         else:
-            results = api.search(query, limit=10)
+            results = await asyncio.wait_for(
+                asyncio.to_thread(api.search, query, limit=10),
+                timeout=float(timeout_seconds),
+            )
             result = _format_search(results, query)
         logger.info("Shodan lookup complete for: %s", query)
         return result
 
+    except asyncio.TimeoutError:
+        return f"Scan error: Shodan request timed out after {timeout_seconds}s."
     except shodan.APIError as exc:  # type: ignore
         logger.warning("Shodan API error: %s", exc)
         return f"Scan error: Shodan API error: {exc}"

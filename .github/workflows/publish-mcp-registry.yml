@@ -22,4 +22,20 @@ jobs:
       - name: Publish to MCP Registry
         run: |
           mcp-publisher login github-oidc
-          mcp-publisher publish .mcp/server.json
+
+          MAX_ATTEMPTS=5
+          ATTEMPT=0
+          DELAYS=(15 30 60 120 120)
+
+          until mcp-publisher publish .mcp/server.json; do
+            ATTEMPT=$((ATTEMPT + 1))
+            if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+              echo "❌ mcp-publisher publish failed after $MAX_ATTEMPTS attempts"
+              exit 1
+            fi
+            WAIT=${DELAYS[$ATTEMPT-1]}
+            echo "⚠️  Attempt $ATTEMPT failed. Retrying in ${WAIT}s..."
+            sleep "$WAIT"
+          done
+
+          echo "✅ MCP Registry publish succeeded on attempt $((ATTEMPT + 1))"

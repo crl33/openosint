@@ -8,6 +8,7 @@ address or username. Returns a formatted string; never raises on failure.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import requests
@@ -89,7 +90,7 @@ async def run_paste_osint(
     """
     logger.info("Starting paste search for: %s", query)
     try:
-        pastes = _fetch_paste_data(query, timeout_seconds)
+        pastes = await asyncio.to_thread(_fetch_paste_data, query, timeout_seconds)
         result = _format_paste_results(pastes, query)
         logger.info("Paste search complete for: %s", query)
         return result

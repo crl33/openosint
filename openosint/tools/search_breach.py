@@ -9,6 +9,7 @@ Returns a formatted string; never raises on failure.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -102,7 +103,7 @@ async def run_breach_osint(
     """
     logger.info("Starting breach check for: %s", email)
     try:
-        breaches = _fetch_hibp_breaches(email, timeout_seconds)
+        breaches = await asyncio.to_thread(_fetch_hibp_breaches, email, timeout_seconds)
         result = _format_breach_results(breaches, email)
         logger.info("Breach check complete for: %s", email)
         return result

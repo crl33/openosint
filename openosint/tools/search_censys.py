@@ -13,6 +13,7 @@ Requires CENSYS_API_ID and CENSYS_SECRET environment variables.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -155,7 +156,10 @@ async def run_censys_osint(target: str, timeout_seconds: int = _DEFAULT_TIMEOUT)
     try:
         if _is_ip_address(target):
             hosts = CensysHosts(api_id=api_id, api_secret=api_secret)
-            data = hosts.view(target)
+            data = await asyncio.wait_for(
+                asyncio.to_thread(hosts.view, target),
+                timeout=float(timeout_seconds),
+            )
             result = _format_ip_result(data, target)
         else:
             try:
@@ -163,31 +167,43 @@ async def run_censys_osint(target: str, timeout_seconds: int = _DEFAULT_TIMEOUT)
 
                 certs = CensysCerts(api_id=api_id, api_secret=api_secret)
                 query = f"parsed.names: {target}"
-                search_results: list = list(
-                    certs.search(
-                        query,
-                        fields=[
-                            "parsed.names",
-                            "parsed.issuer.organization",
-                            "parsed.validity.start",
-                            "parsed.validity.end",
-                        ],
-                        max_records=50,
-                    )
+                search_results: list = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: list(
+                            certs.search(
+                                query,
+                                fields=[
+                                    "parsed.names",
+                                    "parsed.issuer.organization",
+                                    "parsed.validity.start",
+                                    "parsed.validity.end",
+                                ],
+                                max_records=50,
+                            )
+                        )
+                    ),
+                    timeout=float(timeout_seconds),
                 )
             except ImportError:
                 hosts = CensysHosts(api_id=api_id, api_secret=api_secret)
-                search_results = list(
-                    hosts.search(
-                        f"services.tls.certificates.leaf_data.names: {target}",
-                        per_page=10,
-                    )
+                search_results = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: list(
+                            hosts.search(
+                                f"services.tls.certificates.leaf_data.names: {target}",
+                                per_page=10,
+                            )
+                        )
+                    ),
+                    timeout=float(timeout_seconds),
                 )
             result = _format_domain_result(search_results, target)
 
         logger.info("Censys lookup complete for: %s", target)
         return result
 
+    except asyncio.TimeoutError:
+        return f"Scan error: Censys request timed out after {timeout_seconds}s."
     except OSINTError as exc:
         logger.warning("Censys lookup failed: %s", exc)
         return f"Scan error: {exc}"

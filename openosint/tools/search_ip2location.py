@@ -12,6 +12,7 @@ Sponsored integration.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -164,7 +165,7 @@ async def run_ip2location_osint(
 
     logger.info("Starting IP2Location lookup for: %s", ip)
     try:
-        data = _fetch_ip2location_data(ip, api_key, timeout_seconds)
+        data = await asyncio.to_thread(_fetch_ip2location_data, ip, api_key, timeout_seconds)
         result = _format_ip2location_results(data, ip)
         logger.info("IP2Location lookup complete for: %s", ip)
         return result

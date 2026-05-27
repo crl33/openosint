@@ -17,10 +17,10 @@ Requires VIRUSTOTAL_API_KEY environment variable.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
-import time
 
 import requests
 
@@ -199,10 +199,11 @@ def _lookup_domain(api_key: str, domain: str, timeout: int) -> str:
     return _format_domain(response.json())
 
 
-def _lookup_url(api_key: str, target_url: str, timeout: int) -> str:
+async def _lookup_url(api_key: str, target_url: str, timeout: int) -> str:
     # Step 1 — submit URL for analysis
     try:
-        submit_response = requests.post(
+        submit_response = await asyncio.to_thread(
+            requests.post,
             f"{_BASE_URL}/urls",
             headers=_headers(api_key),
             data={"url": target_url},
@@ -219,9 +220,10 @@ def _lookup_url(api_key: str, target_url: str, timeout: int) -> str:
     # Step 2 — poll the analysis endpoint (max 3 attempts, 5 s apart)
     poll_data: dict = {}
     for _ in range(_POLL_ATTEMPTS):
-        time.sleep(_POLL_DELAY)
+        await asyncio.sleep(_POLL_DELAY)
         try:
-            poll_response = requests.get(
+            poll_response = await asyncio.to_thread(
+                requests.get,
                 f"{_BASE_URL}/analyses/{analysis_id}",
                 headers=_headers(api_key),
                 timeout=timeout,
@@ -282,13 +284,13 @@ async def run_virustotal_osint(target: str, timeout_seconds: int = _DEFAULT_TIME
 
     try:
         if input_type == "ip":
-            result = _lookup_ip(api_key, target, timeout_seconds)
+            result = await asyncio.to_thread(_lookup_ip, api_key, target, timeout_seconds)
         elif input_type == "domain":
-            result = _lookup_domain(api_key, target, timeout_seconds)
+            result = await asyncio.to_thread(_lookup_domain, api_key, target, timeout_seconds)
         elif input_type == "url":
-            result = _lookup_url(api_key, target, timeout_seconds)
+            result = await _lookup_url(api_key, target, timeout_seconds)
         else:
-            result = _lookup_hash(api_key, target, timeout_seconds)
+            result = await asyncio.to_thread(_lookup_hash, api_key, target, timeout_seconds)
         logger.info("VirusTotal lookup complete for: %s", target)
         return result
     except OSINTError as exc:

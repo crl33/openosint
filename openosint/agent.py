@@ -488,7 +488,7 @@ class OpenOSINTAgent:
         api_key: str | None = None,
         model: str = "claude-sonnet-4-20250514",
     ) -> None:
-        self.client = anthropic.Anthropic(
+        self.client = anthropic.AsyncAnthropic(
             api_key=api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         )
         self.model = model
@@ -527,7 +527,7 @@ class OpenOSINTAgent:
         )
         try:
             while True:
-                response = self.client.messages.create(
+                response = await self.client.messages.create(
                     model=self.model,
                     max_tokens=_MAX_TOKENS,
                     system=SYSTEM_PROMPT,

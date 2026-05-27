@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-openosint_demo.py — VHS demo driver for OpenOSINT v2.16.0.
+openosint_demo.py — VHS demo driver for OpenOSINT v2.16.1.
 Produces Rich-formatted terminal output for each demo scene.
 Driven by openosint.tape via stdin injection.
 """
@@ -37,7 +37,7 @@ def _banner() -> None:
     console.print()
     console.print(
         Panel.fit(
-            "[bold #00ff88]OpenOSINT[/] [dim]v2.16.0[/]  [dim]·[/]"
+            "[bold #00ff88]OpenOSINT[/] [dim]v2.16.1[/]  [dim]·[/]"
             "  [dim]Provider: Anthropic (claude-sonnet-4-20250514)[/]",
             border_style="#1e293b",
             padding=(0, 2),

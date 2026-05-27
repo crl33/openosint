@@ -159,7 +159,7 @@ async def run_dns_osint(domain: str, timeout_seconds: int = _DEFAULT_TIMEOUT) ->
         except Exception:
             pass
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _collect() -> _RecordSet:
             return _RecordSet(

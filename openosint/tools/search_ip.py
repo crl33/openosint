@@ -9,6 +9,7 @@ Set IPINFO_TOKEN env var for higher limits. Returns a formatted string; never ra
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -93,7 +94,7 @@ async def run_ip_osint(
     """
     logger.info("Starting IP lookup for: %s", ip)
     try:
-        data = _fetch_ip_data(ip, timeout_seconds)
+        data = await asyncio.to_thread(_fetch_ip_data, ip, timeout_seconds)
         result = _format_ip_results(data, ip)
         logger.info("IP lookup complete for: %s", ip)
         return result

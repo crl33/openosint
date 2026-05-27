@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from openosint.tools.exceptions import OSINTError, ToolExecutionError
+from openosint.tools.exceptions import OSINTError
 from openosint.utils import run_subprocess
 
 logger = logging.getLogger(__name__)
@@ -28,8 +28,6 @@ async def _run_sublist3r(domain: str, timeout_seconds: int) -> str:
         timeout_seconds=timeout_seconds,
         install_hint=_INSTALL_HINT,
     )
-    if not result.stdout:
-        raise ToolExecutionError(f"sublist3r produced no output for '{domain}'.")
     return result.stdout
 
 
