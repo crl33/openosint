@@ -312,6 +312,11 @@ class ChatRequest(BaseModel):
 async def _run_tool(tool_name: str, tool_input: str, timeout: int = 120) -> str:
     if tool_name not in _RUNNERS:
         return f"Unknown tool: {tool_name}"
+    if not str(tool_input).strip():
+        return (
+            f"Tool call error: 'input' is required for {tool_name} but was not provided. "
+            "Retry with the target value as the 'input' parameter."
+        )
     try:
         return await _RUNNERS[tool_name](tool_input, timeout)
     except Exception as exc:
@@ -513,8 +518,8 @@ async def _stream_ollama(
             return
 
         msg = data.get("message", {})
-        content = msg.get("content", "")
-        tool_calls = msg.get("tool_calls", [])
+        content = msg.get("content") or ""
+        tool_calls = msg.get("tool_calls") or []
 
         if content:
             yield {"type": "text", "content": content}

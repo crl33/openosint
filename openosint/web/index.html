@@ -709,7 +709,7 @@ document.addEventListener('alpine:init', () => {
           }
         }
         flushText();
-        if (!gotEvent) {
+        if (aiMsg.parts.length === 0) {
           aiMsg.parts.push({ type: 'text', content: 'No response received from backend.', streaming: false });
         }
 
