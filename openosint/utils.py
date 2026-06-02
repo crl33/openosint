@@ -57,15 +57,15 @@ async def run_subprocess(
     ToolTimeoutError
         When the process exceeds timeout_seconds.
     """
-    # Also search the directory where the current Python executable lives so that
-    # tools installed in the same venv or uv-tool bin directory are always found,
-    # even when that directory is not in the user's PATH.
+    # Prepend the venv/uv-tool bin dir so co-installed tools are found even
+    # when the venv is not activated and its bin is absent from the user's PATH.
     venv_bin = str(Path(sys.executable).parent)
     search_path = os.pathsep.join([venv_bin, os.environ.get("PATH", "")])
-    if not shutil.which(binary, path=search_path):
+    resolved = shutil.which(binary, path=search_path)
+    if not resolved:
         detail = f" {install_hint}" if install_hint else ""
         raise ToolNotFoundError(f"'{binary}' is not installed or not in PATH.{detail}")
-    binary = shutil.which(binary, path=search_path) or binary
+    binary = resolved
 
     process: asyncio.subprocess.Process | None = None
     try:

@@ -6,6 +6,8 @@ input detection helpers, generate_dorks output, and session history.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -49,7 +51,7 @@ class TestSearchEmailMissingBinary:
     async def test_returns_string_when_holehe_absent(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_email import run_email_osint
 
         result = await run_email_osint("test@example.com")
@@ -58,7 +60,7 @@ class TestSearchEmailMissingBinary:
     async def test_error_mentions_holehe(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_email import run_email_osint
 
         result = await run_email_osint("test@example.com")
@@ -67,7 +69,7 @@ class TestSearchEmailMissingBinary:
     async def test_does_not_raise(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_email import run_email_osint
 
         try:
@@ -85,7 +87,7 @@ class TestSearchUsernameMissingBinary:
     async def test_returns_string_when_sherlock_absent(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_username import run_username_osint
 
         result = await run_username_osint("johndoe")
@@ -94,7 +96,7 @@ class TestSearchUsernameMissingBinary:
     async def test_error_mentions_sherlock(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_username import run_username_osint
 
         result = await run_username_osint("johndoe")
@@ -103,7 +105,7 @@ class TestSearchUsernameMissingBinary:
     async def test_does_not_raise(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_username import run_username_osint
 
         try:
@@ -121,7 +123,7 @@ class TestSearchDomainMissingBinary:
     async def test_returns_string_when_sublist3r_absent(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_domain import run_domain_osint
 
         result = await run_domain_osint("example.com")
@@ -130,7 +132,7 @@ class TestSearchDomainMissingBinary:
     async def test_error_mentions_sublist3r(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_domain import run_domain_osint
 
         result = await run_domain_osint("example.com")
@@ -139,7 +141,7 @@ class TestSearchDomainMissingBinary:
     async def test_does_not_raise(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_domain import run_domain_osint
 
         try:
@@ -157,7 +159,7 @@ class TestSearchPhoneMissingBinary:
     async def test_returns_string_when_phoneinfoga_absent(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_phone import run_phone_osint
 
         result = await run_phone_osint("+14155552671")
@@ -166,7 +168,7 @@ class TestSearchPhoneMissingBinary:
     async def test_error_mentions_phoneinfoga(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_phone import run_phone_osint
 
         result = await run_phone_osint("+14155552671")
@@ -175,7 +177,7 @@ class TestSearchPhoneMissingBinary:
     async def test_does_not_raise(self, monkeypatch):
         import shutil
 
-        monkeypatch.setattr(shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda *_, **__: None)
         from openosint.tools.search_phone import run_phone_osint
 
         try:
@@ -627,3 +629,44 @@ class TestSessionHistory:
         save_session(SessionRecord(timestamp="2026-05-17T11:00:00", duration_seconds=2))
         sessions = load_sessions()
         assert sessions[0]["duration_seconds"] == 2
+
+
+# ---------------------------------------------------------------------------
+# run_subprocess — venv-bin path resolution (fix/venv-bin-tool-discovery)
+# ---------------------------------------------------------------------------
+
+
+class TestRunSubprocessPathResolution:
+    async def test_search_path_includes_python_executable_dir(self):
+        import sys
+        from pathlib import Path
+
+        from openosint.tools.exceptions import ToolNotFoundError
+        from openosint.utils import run_subprocess
+
+        captured: dict = {}
+
+        def spy_which(name, path=None):
+            captured["path"] = path
+            return None
+
+        with patch("shutil.which", side_effect=spy_which):
+            with pytest.raises(ToolNotFoundError):
+                await run_subprocess("fakebinary", [], 5)
+
+        expected_prefix = str(Path(sys.executable).parent)
+        assert captured.get("path", "").startswith(expected_prefix)
+
+    async def test_resolved_full_path_passed_to_exec(self):
+        from openosint.utils import run_subprocess
+
+        resolved_path = "/fake/venv/bin/mytool"
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"out", b"")
+        mock_proc.returncode = 0
+
+        with patch("shutil.which", return_value=resolved_path):
+            with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+                await run_subprocess("mytool", ["--arg"], 5)
+
+        assert mock_exec.call_args[0][0] == resolved_path
