@@ -5,8 +5,10 @@ OpenOSINT AI Agent.
 Implements the agentic loop using either:
   - The Anthropic native tool use API (default, ``provider="anthropic"``).
   - A local Ollama model (``provider="ollama"``).
+  - Any OpenAI-compatible chat-completions endpoint (``provider="openai"``) —
+    LiteLLM, llama-swap, vLLM, LM Studio, etc.
 
-Both agents share the same ``run()`` interface and return an ``AgentResponse``.
+All agents share the same ``run()`` interface and return an ``AgentResponse``.
 No manual JSON parsing.  The model issues hard stops when it needs a tool,
 the real tool executes, the output goes back.  Hallucination in tool results
 is structurally impossible.
@@ -14,6 +16,7 @@ is structurally impossible.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -694,3 +697,160 @@ class OllamaAgent:
                 )
             logger.exception("Unexpected error in Ollama agent loop.")
             return AgentResponse(content="", error=err_str)
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-compatible agent  (LiteLLM, llama-swap, vLLM, LM Studio, …)
+# ---------------------------------------------------------------------------
+
+
+# OpenAI and Ollama share the same function-tool schema.
+_OPENAI_TOOLS = _OLLAMA_TOOLS
+
+
+def _build_openai_assistant_message(msg: Any) -> dict[str, Any]:
+    """Serialize an OpenAI assistant message with tool_calls into history dict form."""
+    return {
+        "role": "assistant",
+        "content": msg.content or "",
+        "tool_calls": [
+            {
+                "id": openai_tool_call.id,
+                "type": "function",
+                "function": {
+                    "name": openai_tool_call.function.name,
+                    "arguments": openai_tool_call.function.arguments,
+                },
+            }
+            for openai_tool_call in msg.tool_calls
+        ],
+    }
+
+
+async def _process_openai_tool_turn(ctx: _AgentRunContext, openai_msg: Any) -> None:
+    """Execute all tool calls from one OpenAI response and append results to messages."""
+    ctx.messages.append(_build_openai_assistant_message(openai_msg))
+    for openai_tool_call in openai_msg.tool_calls:
+        tool_name = openai_tool_call.function.name
+        raw_args = openai_tool_call.function.arguments
+        try:
+            tool_input = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+        except (json.JSONDecodeError, TypeError):
+            tool_input = {"input": raw_args}
+        result = await _execute_tool(tool_name, tool_input, ctx.on_tool_call)
+        ctx.tool_calls.append(ToolCall(name=tool_name, input=tool_input, result=result))
+        logger.info("OpenAI tool executed: %s → %d chars", tool_name, len(result))
+        ctx.messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": openai_tool_call.id,
+                "content": result,
+            }
+        )
+
+
+class OpenAICompatibleAgent:
+    """
+    Stateful OSINT agent backed by any OpenAI-compatible chat-completions API.
+
+    Works with gateways and local inference servers that speak the OpenAI
+    ``/v1/chat/completions`` protocol — LiteLLM, llama-swap, vLLM, LM Studio,
+    Ollama's ``/v1`` shim, etc.  Requires the ``openai`` Python library.
+
+    The agent follows the same tool-use loop as ``OpenOSINTAgent``:
+    tool_call → execute real binary → feed real output back → loop until done.
+    """
+
+    def __init__(
+        self,
+        model: str = "gpt-4o-mini",
+        base_url: str = "http://localhost:8080/v1",
+        api_key: str | None = None,
+    ) -> None:
+        self.model = model
+        self.base_url = base_url
+        # Many local servers ignore the key, but the SDK requires a non-empty string.
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "") or "sk-no-key-required"
+        self.history: list[dict[str, Any]] = []
+
+    def clear_history(self) -> None:
+        """Reset conversation memory."""
+        self.history = []
+
+    async def run(
+        self,
+        prompt: str,
+        on_tool_call: Any = None,
+    ) -> AgentResponse:
+        """
+        Execute one agent turn via an OpenAI-compatible endpoint.
+
+        Parameters
+        ----------
+        prompt:
+            User message or OSINT target description.
+        on_tool_call:
+            Optional async callback — same signature as ``OpenOSINTAgent.run``.
+
+        Returns
+        -------
+        AgentResponse
+            Final text response and list of tool calls made.
+        """
+        try:
+            import openai  # type: ignore
+        except ImportError:
+            return AgentResponse(
+                content="",
+                error=(
+                    "The 'openai' Python library is not installed.\n"
+                    "Install it with:  pip install openai\n\n"
+                    "Then retry:  openosint --provider openai"
+                ),
+            )
+
+        self.history.append({"role": "user", "content": prompt})
+        messages: list[Any] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *self.history,
+        ]
+        ctx = _AgentRunContext(messages=messages, tool_calls=[], on_tool_call=on_tool_call)
+
+        try:
+            client = openai.AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+            while True:
+                response = await client.chat.completions.create(
+                    model=self.model,
+                    messages=ctx.messages,
+                    tools=_OPENAI_TOOLS,
+                    tool_choice="auto",
+                    max_tokens=_MAX_TOKENS,
+                )
+                msg = response.choices[0].message
+                if not msg.tool_calls:
+                    text = msg.content or ""
+                    self.history.append({"role": "assistant", "content": text})
+                    return AgentResponse(content=text, tool_calls=ctx.tool_calls)
+                await _process_openai_tool_turn(ctx, msg)
+        except openai.AuthenticationError:
+            return AgentResponse(
+                content="",
+                error=(
+                    f"Authentication failed for the OpenAI-compatible endpoint at "
+                    f"{self.base_url}.  Check your API key (OPENAI_API_KEY)."
+                ),
+            )
+        except openai.APIConnectionError:
+            return AgentResponse(
+                content="",
+                error=(
+                    f"[ERROR] Cannot reach the OpenAI-compatible server at {self.base_url}\n\n"
+                    "Verify the base URL is correct and the server is running, e.g.:\n"
+                    "  openosint --provider openai \\\n"
+                    "    --openai-base-url http://localhost:4000/v1 \\\n"
+                    "    --openai-model gpt-4o-mini"
+                ),
+            )
+        except Exception as exc:
+            logger.exception("Unexpected error in OpenAI-compatible agent loop.")
+            return AgentResponse(content="", error=str(exc))

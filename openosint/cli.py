@@ -28,6 +28,7 @@ import argparse  # noqa: E402
 import asyncio  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
+import os  # noqa: E402
 import sys  # noqa: E402
 
 from openosint.json_output import format_tool_result  # noqa: E402
@@ -139,7 +140,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--provider",
         type=str,
         default="anthropic",
-        choices=["anthropic", "ollama"],
+        choices=["anthropic", "ollama", "openai"],
         help="AI provider for the interactive REPL (default: anthropic).",
     )
     parser.add_argument(
@@ -155,6 +156,37 @@ def _build_parser() -> argparse.ArgumentParser:
         default="http://localhost:11434",
         metavar="URL",
         help="Ollama server URL (default: http://localhost:11434).",
+    )
+    parser.add_argument(
+        "--openai-base-url",
+        type=str,
+        default=os.environ.get("OPENAI_BASE_URL", "http://localhost:8080/v1"),
+        metavar="URL",
+        help=(
+            "Base URL of an OpenAI-compatible endpoint (LiteLLM, llama-swap, vLLM, …).  "
+            "Used when --provider openai.  Default: $OPENAI_BASE_URL or "
+            "http://localhost:8080/v1."
+        ),
+    )
+    parser.add_argument(
+        "--openai-model",
+        type=str,
+        default=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        metavar="MODEL",
+        help=(
+            "Model name to request from the OpenAI-compatible endpoint.  "
+            "Used when --provider openai.  Default: $OPENAI_MODEL or gpt-4o-mini."
+        ),
+    )
+    parser.add_argument(
+        "--openai-api-key",
+        type=str,
+        default=None,
+        metavar="KEY",
+        help=(
+            "API key for the OpenAI-compatible endpoint.  "
+            "Falls back to $OPENAI_API_KEY (local servers may ignore it)."
+        ),
     )
     parser.add_argument(
         "--no-pdf",
@@ -735,6 +767,9 @@ async def _async_main() -> None:
             provider=getattr(args, "provider", "anthropic"),
             ollama_model=getattr(args, "ollama_model", "llama3.2"),
             ollama_host=getattr(args, "ollama_host", "http://localhost:11434"),
+            openai_base_url=getattr(args, "openai_base_url", "http://localhost:8080/v1"),
+            openai_model=getattr(args, "openai_model", "gpt-4o-mini"),
+            openai_api_key=getattr(args, "openai_api_key", None),
             is_pdf_disabled=getattr(args, "is_pdf_disabled", False),
         )
         await repl.run()

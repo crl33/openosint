@@ -31,7 +31,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from openosint import __version__
-from openosint.agent import OllamaAgent, OpenOSINTAgent
+from openosint.agent import OllamaAgent, OpenAICompatibleAgent, OpenOSINTAgent
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +85,8 @@ PROMPT_STYLE = Style.from_dict(
 def _print_banner(provider: str, model: str) -> None:
     if provider == "ollama":
         provider_info = f"[dim]Provider: Ollama ({model})[/]"
+    elif provider == "openai":
+        provider_info = f"[dim]Provider: OpenAI-compatible ({model})[/]"
     else:
         provider_info = f"[dim]Provider: Anthropic ({model})[/]"
 
@@ -194,6 +196,7 @@ def _print_config(
     model: str,
     ollama_host: str,
     is_pdf_disabled: bool,
+    openai_base_url: str = "",
 ) -> None:
     masked = ("*" * 20 + api_key[-6:]) if api_key and len(api_key) > 6 else "not set"
     rows = [
@@ -202,6 +205,8 @@ def _print_config(
     ]
     if provider == "anthropic":
         rows.append(f"[bold]API Key:[/]  {masked}")
+    elif provider == "openai":
+        rows.append(f"[bold]Endpoint:[/] {openai_base_url}")
     else:
         rows.append(f"[bold]Ollama:[/]   {ollama_host}")
     rows += [
@@ -248,20 +253,34 @@ class OpenOSINTRepl:
         provider: str = "anthropic",
         ollama_model: str = "llama3.2",
         ollama_host: str = "http://localhost:11434",
+        openai_base_url: str = "http://localhost:8080/v1",
+        openai_model: str = "gpt-4o-mini",
+        openai_api_key: str | None = None,
         is_pdf_disabled: bool = False,
     ) -> None:
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self._provider = provider
         self._ollama_model = ollama_model
         self._ollama_host = ollama_host
+        self._openai_base_url = openai_base_url
+        self._openai_model = openai_model
+        self._openai_api_key = openai_api_key
         self._is_pdf_disabled = is_pdf_disabled
 
+        self._agent: OpenOSINTAgent | OllamaAgent | OpenAICompatibleAgent
         if provider == "ollama":
-            self._agent: OpenOSINTAgent | OllamaAgent = OllamaAgent(
+            self._agent = OllamaAgent(
                 model=ollama_model,
                 host=ollama_host,
             )
             self._display_model = ollama_model
+        elif provider == "openai":
+            self._agent = OpenAICompatibleAgent(
+                model=openai_model,
+                base_url=openai_base_url,
+                api_key=openai_api_key,
+            )
+            self._display_model = openai_model
         else:
             self._agent = OpenOSINTAgent(api_key=self._api_key)
             self._display_model = "claude-sonnet-4-20250514"
@@ -409,6 +428,7 @@ class OpenOSINTRepl:
                         self._display_model,
                         self._ollama_host,
                         self._is_pdf_disabled,
+                        self._openai_base_url,
                     )
                     continue
 

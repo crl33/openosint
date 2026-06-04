@@ -282,6 +282,10 @@ def _get_ai_backend() -> tuple[str, str | None, bool | None]:
     """Return (backend_name, ollama_host, ollama_reachable)."""
     if os.environ.get("ANTHROPIC_API_KEY", "").strip():
         return "claude", None, None
+    # An OpenAI-compatible endpoint (LiteLLM, llama-swap, vLLM, …) takes
+    # precedence over Ollama when configured.
+    if os.environ.get("OPENAI_BASE_URL", "").strip():
+        return "openai", None, None
     ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
     try:
         resp = _requests.get(f"{ollama_host}/api/tags", timeout=2)
@@ -302,6 +306,32 @@ class ChatRequest(BaseModel):
     model: str = "claude"
     ollama_model: str = "llama3.2"
     ollama_host: str = "http://localhost:11434"
+    openai_base_url: str = ""
+    openai_model: str = ""
+    openai_api_key: str = ""
+
+
+def _select_chat_backend(req: "ChatRequest") -> str:
+    """Resolve which AI backend to use for a chat request: openai | ollama | claude."""
+    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    openai_base = (req.openai_base_url or os.environ.get("OPENAI_BASE_URL", "")).strip()
+
+    # Explicit selection from the UI takes priority.
+    if req.model == "openai":
+        return "openai"
+    if req.model == "ollama":
+        return "ollama"
+    if req.model == "claude" and has_anthropic:
+        return "claude"
+
+    # Auto-detect when no explicit, usable selection was made.
+    if has_anthropic:
+        return "claude"
+    if openai_base:
+        return "openai"
+    if req.ollama_host:
+        return "ollama"
+    return "claude"
 
 
 # ---------------------------------------------------------------------------
@@ -551,6 +581,124 @@ async def _stream_ollama(
 
             yield {"type": "tool_result", "tool": tool_name, "output": result, "elapsed": elapsed}
             tool_results_for_next.append({"role": "tool", "content": result})
+
+        msgs = (
+            msgs
+            + [{"role": "assistant", "content": content, "tool_calls": tool_calls}]
+            + tool_results_for_next
+        )
+
+    yield {"type": "done"}
+
+
+async def _stream_openai(
+    messages: list[dict],
+    base_url: str,
+    api_key: str,
+    model: str,
+) -> AsyncIterator[dict]:
+    """Yield SSE event dicts using any OpenAI-compatible chat-completions API."""
+    base = base_url.rstrip("/")
+    url = f"{base}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    msgs = list(messages)
+
+    openai_tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in _CLAUDE_TOOLS
+    ]
+
+    while True:
+        payload = {
+            "model": model,
+            "messages": msgs,
+            "tools": openai_tools,
+            "tool_choice": "auto",
+            "stream": False,
+        }
+        try:
+            if _httpx is not None:
+                async with _httpx.AsyncClient(timeout=180) as client:
+                    r = await client.post(url, json=payload, headers=headers)
+                if r.status_code != 200:
+                    yield {
+                        "type": "error",
+                        "message": f"OpenAI endpoint returned HTTP {r.status_code}: {r.text[:300]}",
+                    }
+                    return
+                data = r.json()
+            else:
+                _payload = payload  # capture for lambda
+                raw = await asyncio.to_thread(
+                    lambda: _requests.post(url, json=_payload, headers=headers, timeout=180)
+                )
+                if raw.status_code != 200:
+                    yield {
+                        "type": "error",
+                        "message": f"OpenAI endpoint returned HTTP {raw.status_code}: {raw.text[:300]}",
+                    }
+                    return
+                data = raw.json()
+        except Exception as exc:
+            yield {"type": "error", "message": f"OpenAI request failed: {exc}"}
+            return
+
+        choices = data.get("choices") or []
+        if not choices:
+            yield {
+                "type": "error",
+                "message": f"OpenAI endpoint returned no choices: {str(data)[:300]}",
+            }
+            return
+        msg = choices[0].get("message", {})
+        content = msg.get("content") or ""
+        tool_calls = msg.get("tool_calls") or []
+
+        if content:
+            yield {"type": "text", "content": content}
+
+        if not tool_calls:
+            break
+
+        tool_results_for_next = []
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            tool_name = fn.get("name", "")
+            raw_args = fn.get("arguments", {})
+            if isinstance(raw_args, str):
+                try:
+                    raw_args = json.loads(raw_args)
+                except Exception:
+                    raw_args = {"input": raw_args}
+            tool_input = raw_args.get("input", "")
+            if not tool_input and raw_args:
+                tool_input = next(
+                    (v for v in raw_args.values() if isinstance(v, str)), str(raw_args)
+                )
+
+            yield {"type": "tool_start", "tool": tool_name, "input": str(tool_input)}
+
+            t0 = time.monotonic()
+            result = await _run_tool(tool_name, str(tool_input))
+            elapsed = round(time.monotonic() - t0, 2)
+
+            yield {"type": "tool_result", "tool": tool_name, "output": result, "elapsed": elapsed}
+            tool_results_for_next.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", ""),
+                    "content": result,
+                }
+            )
 
         msgs = (
             msgs
@@ -826,6 +974,30 @@ def create_app() -> FastAPI:
         if has_claude:
             return {"status": "ok", "backend": "claude", "ollama_reachable": None}
 
+        # OpenAI-compatible endpoint (LiteLLM, llama-swap, vLLM, …).
+        openai_base = os.environ.get("OPENAI_BASE_URL", "").strip().rstrip("/")
+        if openai_base:
+            api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            try:
+                if _httpx is not None:
+                    async with _httpx.AsyncClient(timeout=2.5) as client:
+                        r = await client.get(f"{openai_base}/models", headers=headers)
+                        reachable = r.status_code == 200
+                else:
+                    raw = await asyncio.to_thread(
+                        lambda: _requests.get(f"{openai_base}/models", headers=headers, timeout=2.5)
+                    )
+                    reachable = raw.status_code == 200
+            except Exception:
+                reachable = False
+            return {
+                "status": "ok",
+                "backend": "openai" if reachable else "none",
+                "openai_reachable": reachable,
+                "openai_base_url": openai_base,
+            }
+
         ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
         try:
             if _httpx is not None:
@@ -860,11 +1032,18 @@ def create_app() -> FastAPI:
                 messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": req.message})
 
-        use_ollama = req.model == "ollama" or not os.environ.get("ANTHROPIC_API_KEY", "").strip()
-        use_ollama = use_ollama and bool(req.ollama_host)
+        backend = _select_chat_backend(req)
 
         async def generate():
-            if use_ollama:
+            if backend == "openai":
+                base_url = (
+                    req.openai_base_url
+                    or os.environ.get("OPENAI_BASE_URL", "http://localhost:8080/v1")
+                ).strip()
+                api_key = (req.openai_api_key or os.environ.get("OPENAI_API_KEY", "")).strip()
+                model = (req.openai_model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")).strip()
+                gen = _stream_openai(messages, base_url, api_key, model)
+            elif backend == "ollama":
                 gen = _stream_ollama(messages, req.ollama_host, req.ollama_model)
             else:
                 gen = _stream_claude(messages)

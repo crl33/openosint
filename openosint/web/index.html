@@ -151,6 +151,13 @@
               class="flex-1 px-3 py-2 rounded-md border text-xs font-medium transition-all">
         Ollama (local)
       </button>
+      <button @click="settings.chatModel = 'openai'; saveLocalSettings()"
+              :class="settings.chatModel === 'openai'
+                ? 'bg-border text-primary border-app'
+                : 'bg-app border-app text-secondary hover:border-app hover:text-primary'"
+              class="flex-1 px-3 py-2 rounded-md border text-xs font-medium transition-all">
+        OpenAI API
+      </button>
     </div>
 
     <div x-show="settings.chatModel === 'ollama'"
@@ -172,6 +179,39 @@
         </button>
         <span x-show="ollamaTestResult" x-text="ollamaTestResult"
               :class="ollamaTestOk ? 'text-accent' : 'text-error'"
+              class="text-xs font-mono"></span>
+      </div>
+    </div>
+
+    <div x-show="settings.chatModel === 'openai'"
+         class="bg-app border border-app rounded-md p-4 space-y-3 mb-4">
+      <p class="text-muted text-xs leading-relaxed">
+        Any OpenAI-compatible endpoint (LiteLLM, llama-swap, vLLM, …). The model
+        must support tool/function calling. Leave fields blank to use the server's
+        environment defaults.
+      </p>
+      <div>
+        <label class="text-muted text-xs uppercase tracking-wider block mb-1.5">Base URL</label>
+        <input x-model="settings.openaiBaseUrl" placeholder="http://localhost:4000/v1"
+               class="w-full bg-surface border border-app rounded-md px-3 py-2 text-sm text-primary focus:outline-none transition-colors">
+      </div>
+      <div>
+        <label class="text-muted text-xs uppercase tracking-wider block mb-1.5">Model name</label>
+        <input x-model="settings.openaiModel" placeholder="gpt-4o-mini"
+               class="w-full bg-surface border border-app rounded-md px-3 py-2 text-sm text-primary focus:outline-none transition-colors">
+      </div>
+      <div>
+        <label class="text-muted text-xs uppercase tracking-wider block mb-1.5">API key (optional)</label>
+        <input x-model="settings.openaiApiKey" type="password" placeholder="sk-..."
+               class="w-full bg-surface border border-app rounded-md px-3 py-2 text-sm text-primary focus:outline-none transition-colors">
+      </div>
+      <div class="flex items-center gap-3">
+        <button @click="testOpenai()"
+                class="px-3 py-1.5 rounded-md border border-app text-secondary hover:text-primary text-xs transition-all">
+          Test connection
+        </button>
+        <span x-show="openaiTestResult" x-text="openaiTestResult"
+              :class="openaiTestOk ? 'text-accent' : 'text-error'"
               class="text-xs font-mono"></span>
       </div>
     </div>
@@ -271,6 +311,7 @@
             class="text-xs px-3 py-1 rounded-full border border-app text-secondary bg-transparent hover:text-primary transition-colors cursor-pointer">
       <span x-show="aiBackend === 'claude'">Claude Sonnet 4.5</span>
       <span x-show="aiBackend === 'ollama'">Ollama <span x-text="settings.ollamaModel"></span></span>
+      <span x-show="aiBackend === 'openai'">OpenAI <span x-text="settings.openaiModel || 'model'"></span></span>
       <span x-show="aiBackend === 'none'">Not configured</span>
     </button>
   </div>
@@ -479,6 +520,8 @@ document.addEventListener('alpine:init', () => {
     setupOk: false,
     ollamaTestResult: '',
     ollamaTestOk: false,
+    openaiTestResult: '',
+    openaiTestOk: false,
     tools: [],
     showKeys: {},
     setupData: {},
@@ -488,6 +531,9 @@ document.addEventListener('alpine:init', () => {
       chatModel: 'claude',
       ollamaModel: 'llama3.2',
       ollamaHost: 'http://localhost:11434',
+      openaiBaseUrl: '',
+      openaiModel: '',
+      openaiApiKey: '',
     },
 
     suggestions: [
@@ -570,6 +616,7 @@ document.addEventListener('alpine:init', () => {
         this.aiBackend = d.ai_backend || 'none';
         if (d.ollama_host) this.settings.ollamaHost = d.ollama_host;
         if (this.aiBackend === 'ollama') this.settings.chatModel = 'ollama';
+        else if (this.aiBackend === 'openai') this.settings.chatModel = 'openai';
         else if (this.aiBackend === 'claude') this.settings.chatModel = 'claude';
         this.fetchTools();
       } catch {}
@@ -601,7 +648,7 @@ document.addEventListener('alpine:init', () => {
       } catch {}
 
       if (this.aiBackend === 'none') {
-        this._pushError('No AI backend configured. Add your ANTHROPIC_API_KEY in Settings, or start Ollama and select it as the backend.');
+        this._pushError('No AI backend configured. Add your ANTHROPIC_API_KEY in Settings, configure an OpenAI-compatible endpoint (OPENAI_BASE_URL), or start Ollama and select it as the backend.');
         return;
       }
 
@@ -629,6 +676,9 @@ document.addEventListener('alpine:init', () => {
         model: this.settings.chatModel,
         ollama_model: this.settings.ollamaModel,
         ollama_host: this.settings.ollamaHost,
+        openai_base_url: this.settings.openaiBaseUrl,
+        openai_model: this.settings.openaiModel,
+        openai_api_key: this.settings.openaiApiKey,
       };
 
       let fullText = '';
@@ -836,6 +886,31 @@ document.addEventListener('alpine:init', () => {
         else        { this.ollamaTestResult = `HTTP ${r.status}`; }
       } catch (e) {
         this.ollamaTestResult = e.message;
+      }
+    },
+
+    async testOpenai() {
+      this.openaiTestResult = 'Testing...';
+      this.openaiTestOk = false;
+      const base = (this.settings.openaiBaseUrl || '').replace(/\/$/, '');
+      if (!base) {
+        // No URL entered — fall back to the server-side check of the configured endpoint.
+        try {
+          const r = await fetch('/api/chat/test', { signal: AbortSignal.timeout(4000) });
+          const d = await r.json();
+          if (d.backend === 'openai') { this.openaiTestOk = true; this.openaiTestResult = 'Connected (server default)'; }
+          else { this.openaiTestResult = 'No endpoint configured'; }
+        } catch (e) { this.openaiTestResult = e.message; }
+        return;
+      }
+      try {
+        const headers = {};
+        if (this.settings.openaiApiKey) headers['Authorization'] = 'Bearer ' + this.settings.openaiApiKey;
+        const r = await fetch(base + '/models', { headers, signal: AbortSignal.timeout(4000) });
+        if (r.ok) { this.openaiTestOk = true; this.openaiTestResult = 'Connected'; }
+        else      { this.openaiTestResult = `HTTP ${r.status}`; }
+      } catch (e) {
+        this.openaiTestResult = e.message;
       }
     },
   }));

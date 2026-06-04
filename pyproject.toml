@@ -65,6 +65,9 @@ shodan = [
 ollama = [
     "ollama>=0.3.0",
 ]
+openai = [
+    "openai>=1.40.0",
+]
 pdf = [
     "reportlab>=4.0.0",
 ]
@@ -82,6 +85,7 @@ web = [
 all = [
     "shodan>=1.31.0",
     "ollama>=0.3.0",
+    "openai>=1.40.0",
     "reportlab>=4.0.0",
     "censys>=2.2.0",
     "fastapi>=0.110.0",

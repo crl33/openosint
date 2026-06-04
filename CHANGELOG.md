@@ -7,6 +7,21 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **OpenAI-compatible backend** (`--provider openai`). OpenOSINT can now drive any
+  endpoint that speaks the OpenAI `/v1/chat/completions` protocol — LiteLLM,
+  llama-swap, vLLM, LM Studio, etc. — via the new `OpenAICompatibleAgent`.
+  - CLI flags: `--openai-base-url`, `--openai-model`, `--openai-api-key`.
+  - Env vars: `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`. When
+    `OPENAI_BASE_URL` is set (and no `ANTHROPIC_API_KEY`), it takes precedence
+    over Ollama.
+  - Web UI: new "OpenAI API" backend option with base-URL/model/key fields and a
+    connection test; streaming tool-use via the new `_stream_openai` handler.
+  - The target model must support tool/function calling (for llama.cpp behind
+    llama-swap, launch with `--jinja`).
+
 ## [2.18.1] — 2026-06-02
 
 ### Fixed
