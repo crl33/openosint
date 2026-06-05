@@ -19,6 +19,19 @@ jobs:
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           sudo mv mcp-publisher /usr/local/bin/
 
+      - name: Wait for PyPI to publish this version
+        run: |
+          VERSION=$(python3 -c "import json; d=json.load(open('.mcp/server.json')); print(d['packages'][0]['version'])")
+          echo "Waiting for openosint $VERSION on PyPI..."
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/openosint/$VERSION/json")
+            [ "$code" = "200" ] && { echo "openosint $VERSION is on PyPI"; exit 0; }
+            echo "  try $i: got $code — retrying in 15s"
+            sleep 15
+          done
+          echo "Timed out waiting for openosint $VERSION on PyPI (10 min elapsed)"
+          exit 1
+
       - name: Publish to MCP Registry
         run: |
           mcp-publisher login github-oidc
