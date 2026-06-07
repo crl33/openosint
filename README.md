@@ -551,6 +551,10 @@ Set `ANTHROPIC_API_KEY` (and optionally `HIBP_API_KEY`, `IPINFO_TOKEN`) in a `.e
 | DNS (system resolver) | — | `search_dns` | Community | None |
 | Google Search | https://www.google.com | `generate_dorks` | Community | None |
 
+## Resources
+
+- **[AI OSINT Prompt Pack](https://tommasodev.gumroad.com/l/ai-osint-prompt-pack)** — 30+ ready-to-use prompts for faster, ethical OSINT investigations with any AI assistant. Built to pair with OpenOSINT.
+
 ## Sponsor this project
 
 OpenOSINT is used by OSINT practitioners, security researchers, and developers who are actively evaluating and adopting intelligence APIs. Every time a user configures a new integration, the documentation routes them directly to that provider's sign-up page — putting sponsors in front of their target audience at the moment of adoption.
