@@ -1,7 +1,7 @@
 mcp-name: io.github.OpenOSINT/openosint
 
 <div align="center">
-  <img src="docs/logo.svg" alt="OpenOSINT" width="200" />
+  <img src="https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/v2.19.1/docs/logo.svg" alt="OpenOSINT" width="200" />
   <h1>OpenOSINT</h1>
   <p><strong>AI-powered OSINT agent. Interactive REPL · CLI · MCP Server · Web UI</strong></p>
   <p>16 tools. Powered by Anthropic Claude or local Ollama. For authorized security research only.</p>
@@ -24,7 +24,7 @@ mcp-name: io.github.OpenOSINT/openosint
 </div>
 
 <div align="center">
-  <img src="assets/demo.gif" alt="OpenOSINT terminal demo" width="900" />
+  <img src="https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/v2.19.1/assets/demo.gif" alt="OpenOSINT terminal demo" width="900" />
 </div>
 
 > **Legal Disclaimer**: OpenOSINT is intended for **legal and authorized use only**.
@@ -451,7 +451,7 @@ openosint --provider openai \
 The interactive documentation at [openosint.tech](https://openosint.tech/) covers every tool, CLI flag, and configuration option.
 
 <div align="center">
-  <img src="assets/demo-web.gif" alt="openosint.tech documentation tour" width="900" />
+  <img src="https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/v2.19.1/assets/demo-web.gif" alt="openosint.tech documentation tour" width="900" />
 </div>
 
 ### MCP Server

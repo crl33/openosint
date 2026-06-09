@@ -7,6 +7,13 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.19.1] — 2026-06-09
+
+### Fixed
+- Use absolute `raw.githubusercontent.com` URLs for logo and terminal demo images so they render correctly on the PyPI project page (PyPI's renderer does not resolve relative paths).
+
+---
+
 ## [2.19.0] — 2026-06-05
 
 ### Added
