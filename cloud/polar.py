@@ -1,0 +1,130 @@
+"""
+OpenOSINT Cloud — Polar.sh integration.
+
+Covers two responsibilities:
+  1. Webhook signature verification (Standard Webhooks / HMAC-SHA256).
+  2. Best-effort usage-event ingestion (analytics telemetry, not billing).
+
+Polar uses the Standard Webhooks spec: https://www.standardwebhooks.com
+Headers supplied by Polar on each delivery:
+  webhook-id         — unique message ID (use as idempotency key)
+  webhook-timestamp  — Unix seconds (string)
+  webhook-signature  — space-separated list of "v1,<base64sig>" tokens
+
+Signed content: "{webhook-id}.{webhook-timestamp}.{raw_body}"
+Key:            HMAC-SHA256 secret from Polar dashboard (base64 or whsec_ prefixed)
+
+⚠️  Verify the exact signature format by sending a test event from
+    Polar dashboard → Developer → Webhooks → Send test event.
+
+Polar webhook event type strings subscribed to in this gateway:
+  - benefit_grant.created   (primary: license key granted → create customer)
+  - benefit_grant.updated   (key refresh / status change)
+  - benefit_grant.revoked   (account deactivated → zero credits)
+  - subscription.updated    (renewal → refill credits when status == "active")
+
+⚠️  Verify these string values in Polar dashboard → Developer → Webhooks
+    → Send test event → select event type → inspect the "type" field.
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import logging
+import os
+import time
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+_TIMESTAMP_TOLERANCE_SECS = 300  # reject webhooks older than 5 minutes
+_POLAR_API = "https://api.polar.sh"
+
+# ── event type constants ──────────────────────────────────────────────────────
+# ⚠️  Confirm these against Polar's test-event tool before going live.
+EVT_BENEFIT_GRANT_CREATED = "benefit_grant.created"
+EVT_BENEFIT_GRANT_UPDATED = "benefit_grant.updated"
+EVT_BENEFIT_GRANT_REVOKED = "benefit_grant.revoked"
+EVT_SUBSCRIPTION_UPDATED  = "subscription.updated"
+
+
+# ── webhook signature verification ───────────────────────────────────────────
+
+def _decode_secret(secret: str) -> bytes:
+    """Accept whsec_<b64>, plain base64, or raw UTF-8 secrets."""
+    if secret.startswith("whsec_"):
+        return base64.b64decode(secret[6:])
+    try:
+        return base64.b64decode(secret)
+    except Exception:
+        return secret.encode()
+
+
+def verify_webhook_signature(
+    body: bytes,
+    msg_id: str,
+    msg_timestamp: str,
+    msg_signature: str,
+    secret: str,
+) -> bool:
+    """
+    Verify a Polar webhook using Standard Webhooks HMAC-SHA256.
+    Returns False (never raises) on any verification failure.
+    """
+    if not secret:
+        logger.error("POLAR_WEBHOOK_SECRET is not set — rejecting all webhooks")
+        return False
+    try:
+        ts = int(msg_timestamp)
+        if abs(time.time() - ts) > _TIMESTAMP_TOLERANCE_SECS:
+            logger.warning("Webhook timestamp outside ±5 min window: %s", msg_timestamp)
+            return False
+        key = _decode_secret(secret)
+        signed_content = f"{msg_id}.{msg_timestamp}.{body.decode()}".encode()
+        expected = base64.b64encode(
+            hmac.new(key, signed_content, hashlib.sha256).digest()
+        ).decode()
+        # Signature header may carry multiple space-separated tokens
+        for token in msg_signature.split():
+            if "," in token:
+                _, sig_val = token.split(",", 1)
+                if hmac.compare_digest(expected, sig_val):
+                    return True
+        logger.warning("Webhook signature mismatch")
+        return False
+    except Exception as exc:
+        logger.error("Webhook signature verification error: %s", exc)
+        return False
+
+
+# ── usage event ingestion ─────────────────────────────────────────────────────
+
+async def send_usage_event(polar_customer_id: str, tool: str) -> None:
+    """
+    Ingest a usage analytics event to Polar (best-effort telemetry).
+    Errors are always swallowed — this must never block or break a paid call.
+
+    ⚠️  Verify the endpoint path against Polar's Events API documentation.
+        Current target: POST /v1/events/ingest
+    """
+    token = os.environ.get("POLAR_TOKEN", "")
+    if not token or not polar_customer_id:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{_POLAR_API}/v1/events/ingest",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "name": "api_call",
+                    "customer_id": polar_customer_id,
+                    "properties": {"tool": tool},
+                },
+            )
+    except Exception as exc:
+        logger.debug("Polar usage event failed (swallowed): %s", exc)
