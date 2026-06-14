@@ -5,6 +5,7 @@ mcp-name: io.github.OpenOSINT/openosint
   <h1>OpenOSINT</h1>
   <p><strong>AI-powered OSINT agent. Interactive REPL · CLI · MCP Server · Web UI</strong></p>
   <p>16 tools. Powered by Anthropic Claude or local Ollama. For authorized security research only.</p>
+  <p>New to OSINT? Start here → <a href="https://openosint.tech/learn">openosint.tech/learn</a></p>
 </div>
 
 <div align="center">
