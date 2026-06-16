@@ -4,7 +4,7 @@ mcp-name: io.github.OpenOSINT/openosint
   <img src="https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/v2.19.1/docs/logo.svg" alt="OpenOSINT" width="200" />
   <h1>OpenOSINT</h1>
   <p><strong>AI-powered OSINT agent. Interactive REPL · CLI · MCP Server · Web UI</strong></p>
-  <p>16 tools. Powered by Anthropic Claude or local Ollama. For authorized security research only.</p>
+  <p>18 tools. Works natively with <strong>Claude Code</strong>, <strong>Claude Desktop</strong>, and any MCP-compatible client (Cursor, Windsurf, …). Powered by Anthropic Claude, local Ollama, or any OpenAI-compatible endpoint. For authorized security research only.</p>
   <p>New to OSINT? Start here → <a href="https://openosint.tech/learn">openosint.tech/learn</a></p>
 </div>
 
@@ -31,6 +31,18 @@ mcp-name: io.github.OpenOSINT/openosint
 <div align="center">
   <img src="https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/v2.19.1/assets/demo.gif" alt="OpenOSINT terminal demo" width="900" />
 </div>
+
+```bash
+pip install openosint
+```
+
+- **18 modular tools** — email, username, IP, domain, WHOIS, breach, phone, paste, Shodan, VirusTotal, Censys, AbuseIPDB, GitHub, DNS, live dork search, and URL scraping
+- **MCP server built in** — expose all 18 tools natively to Claude Code, Claude Desktop, and any MCP-compatible client; no extra config needed
+- **Three AI backends** — Anthropic Claude (default), local Ollama, or any OpenAI-compatible endpoint; tool results come from real subprocess calls, never hallucinated
+- **Fully async** — parallel tool execution via `asyncio.gather()` with hard subprocess timeouts
+- **MIT licensed** — no embedded LLM; bring your own API key or run fully offline
+
+---
 
 > **Legal Disclaimer**: OpenOSINT is intended for **legal and authorized use only**.
 > Users are solely responsible for ensuring their use complies with all applicable laws and regulations.
@@ -101,8 +113,8 @@ OpenOSINT is an AI agent for Open Source Intelligence with three interfaces: an 
 
 ## Features
 
-- **AI tool chaining** — the agent decides which of 16 tools to run, chains them based on findings, and compiles a structured report
-- **16 modular tools** covering email, username, breach, WHOIS, IP, subdomain, dorks, paste, phone, Shodan, VirusTotal, Censys, IP2Location, AbuseIPDB, GitHub, and DNS
+- **AI tool chaining** — the agent decides which of 18 tools to run, chains them based on findings, and compiles a structured report
+- **18 modular tools** covering email, username, breach, WHOIS, IP, subdomain, dorks, paste, phone, Shodan, VirusTotal, Censys, IP2Location, AbuseIPDB, GitHub, DNS, live dork search, and URL scraping
 - **Anthropic, Ollama, or any OpenAI-compatible endpoint** — use Claude via API key, run fully offline with a local Ollama model, or point at any OpenAI-compatible server (LiteLLM, llama-swap, vLLM, LM Studio, …)
 - **MCP server** — expose all tools natively to Claude Code and Claude Desktop
 - **Parallel execution** — `--parallel` runs complementary tools concurrently via `asyncio.gather()`
@@ -581,7 +593,7 @@ The interactive documentation at [openosint.tech](https://openosint.tech/) cover
 
 ### MCP Server
 
-Expose all 16 OpenOSINT tools to any MCP-compatible AI client. Once connected, Claude can natively invoke all 16 tools during conversations.
+Expose all 18 OpenOSINT tools to any MCP-compatible AI client. Once connected, Claude can natively invoke all 18 tools during conversations.
 
 **Claude Code:**
 
@@ -784,7 +796,7 @@ For commercial use in closed-source products, a separate license is required. �
 
 *For authorized security research only. See [DISCLAIMER.md](DISCLAIMER.md).*
 
-*OpenOSINT v2.19.0 — June 5, 2026*
+*OpenOSINT v2.22.0 — June 2026*
 
 ## Star History
 
