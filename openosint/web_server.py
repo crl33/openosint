@@ -53,6 +53,7 @@ from openosint.tools.search_paste import run_paste_osint
 from openosint.tools.search_phone import run_phone_osint
 from openosint.tools.search_shodan import run_shodan_osint
 from openosint.tools.search_username import run_username_osint
+from openosint.tools.search_footprint import run_footprint_osint
 from openosint.tools.search_virustotal import run_virustotal_osint
 from openosint.tools.search_whois import run_whois_osint
 from openosint import __version__ as _VERSION
@@ -244,6 +245,24 @@ _TOOL_CATALOG: list[dict] = [
             "BRIGHTDATA_UNLOCKER_ZONE": "Your Bright Data Web Unlocker zone name",
         },
     },
+    {
+        "name": "search_footprint",
+        "description": (
+            "Collect a target's public search-engine footprint via Bright Data SERP API. "
+            "Detects entity type (email, username, domain, phone, or full name) and runs "
+            "entity-type-aware Google queries, returning ECG nodes/edges for discovered profiles."
+        ),
+        "input_label": "Target (email, username, domain, phone, or full name)",
+        "input_placeholder": "john doe",
+        "category": "Recon",
+        "icon": "👣",
+        "requires_binary": [],
+        "requires_env": ["BRIGHTDATA_API_KEY", "BRIGHTDATA_SERP_ZONE"],
+        "env_hints": {
+            "BRIGHTDATA_API_KEY": BRIGHTDATA_LINK_WEB,
+            "BRIGHTDATA_SERP_ZONE": "Your Bright Data SERP zone name",
+        },
+    },
 ]
 
 # Map tool name → async callable(input_value: str, timeout: int) -> str
@@ -263,6 +282,7 @@ _RUNNERS: dict[str, object] = {
     "search_censys": lambda v, t: run_censys_osint(v, timeout_seconds=t),
     "search_dorks_live": lambda v, t: run_dorks_live_osint(v, timeout_seconds=t),
     "scrape_url": lambda v, t: run_scrape_url_osint(v, timeout_seconds=t),
+    "search_footprint": lambda v, t: run_footprint_osint(v, timeout_seconds=t),
 }
 
 # Claude tool schemas (one string "input" param per tool)

@@ -398,3 +398,55 @@ class TestRunToolInputValidation:
             result = await _run_tool("test_tool", "my_target")
 
         assert result == "ran:my_target"
+
+
+# ---------------------------------------------------------------------------
+# Footprint tool registration in web server
+# ---------------------------------------------------------------------------
+
+
+class TestSearchFootprintWebRegistration:
+    def test_search_footprint_in_tool_catalog(self):
+        from openosint.web_server import _TOOL_CATALOG
+
+        names = [t["name"] for t in _TOOL_CATALOG]
+        assert "search_footprint" in names
+
+    def test_search_footprint_catalog_entry_shape(self):
+        from openosint.web_server import _TOOL_CATALOG
+
+        entry = next(t for t in _TOOL_CATALOG if t["name"] == "search_footprint")
+        assert entry["category"] == "Recon"
+        assert entry["icon"] == "👣"
+        assert "BRIGHTDATA_API_KEY" in entry["requires_env"]
+        assert "BRIGHTDATA_SERP_ZONE" in entry["requires_env"]
+        assert entry["requires_binary"] == []
+        assert "input_label" in entry
+        assert "input_placeholder" in entry
+
+    def test_search_footprint_in_runners(self):
+        from openosint.web_server import _RUNNERS
+
+        assert "search_footprint" in _RUNNERS
+
+    def test_search_footprint_runner_is_callable(self):
+        from openosint.web_server import _RUNNERS
+
+        assert callable(_RUNNERS["search_footprint"])
+
+    def test_search_footprint_in_claude_tools(self):
+        from openosint.web_server import _CLAUDE_TOOLS
+
+        names = [t["name"] for t in _CLAUDE_TOOLS]
+        assert "search_footprint" in names
+
+    async def test_run_tool_dispatches_footprint(self):
+        from openosint.web_server import _run_tool
+
+        async def fake_footprint(target, max_queries=3, timeout_seconds=30):
+            return f"footprint:{target}"
+
+        with patch("openosint.web_server.run_footprint_osint", fake_footprint):
+            result = await _run_tool("search_footprint", "john doe")
+
+        assert result == "footprint:john doe"
