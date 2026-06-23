@@ -94,7 +94,17 @@ OpenOSINT is an AI agent for Open Source Intelligence with three interfaces: an 
 - **Session history** — all REPL sessions saved to `~/.openosint/history/`; browse with `openosint history`
 - **Web UI** — browser-based AI chat with streaming output, tool cards, and light/dark theme toggle
 
-## 🧠 From tools to method — AI OSINT Prompt Pack
+## 🎁 Free: 5 AI OSINT prompts (starter set)
+
+New to AI-assisted OSINT? The **free starter set** gives you 5 structured prompts — one per stage of a real investigation — that make ChatGPT and Claude collect real public data instead of hallucinating it.
+
+- Scope → Collect → Pivot → Verify → Document
+- Works with any AI assistant (Claude, ChatGPT, Gemini)
+- Free PDF, instant download — enter $0, no card needed
+
+**→ [Free download on Gumroad](https://tommasodev.gumroad.com/l/free-osint-prompts?utm_source=github&utm_medium=readme&utm_campaign=free_starter)**
+
+## 🧠 Full method — AI OSINT Prompt Pack
 
 OpenOSINT gives you the tooling. The **AI OSINT Prompt Pack** gives you the *method*: 30+ tested prompts that make ChatGPT / Claude **collect → pivot → verify** against real public sources instead of hallucinating.
 
@@ -102,7 +112,7 @@ OpenOSINT gives you the tooling. The **AI OSINT Prompt Pack** gives you the *met
 - One repeatable investigation flow + an ethics & legal primer
 - 7-page PDF · instant download · pairs directly with OpenOSINT
 
-**→ [Get the Prompt Pack](https://tommasodev.gumroad.com/l/ai-osint-prompt-pack)**
+**→ [Get the Prompt Pack ($29)](https://tommasodev.gumroad.com/l/ai-osint-prompt-pack?utm_source=github&utm_medium=readme&utm_campaign=prompt_pack)**
 
 _Buying it directly funds OpenOSINT's development. 🙏_
 
@@ -662,7 +672,8 @@ Set `ANTHROPIC_API_KEY` (and optionally `HIBP_API_KEY`, `IPINFO_TOKEN`) in a `.e
 
 ## Resources
 
-- **[AI OSINT Prompt Pack](https://tommasodev.gumroad.com/l/ai-osint-prompt-pack)** — 30+ ready-to-use prompts for faster, ethical OSINT investigations with any AI assistant. Built to pair with OpenOSINT.
+- **[Free AI OSINT Prompt Starter Set](https://tommasodev.gumroad.com/l/free-osint-prompts?utm_source=github&utm_medium=readme_resources&utm_campaign=free_starter)** — 5 structured prompts (free PDF) to run your first AI investigation properly.
+- **[AI OSINT Prompt Pack ($29)](https://tommasodev.gumroad.com/l/ai-osint-prompt-pack?utm_source=github&utm_medium=readme_resources&utm_campaign=prompt_pack)** — 30+ ready-to-use prompts for faster, ethical OSINT investigations with any AI assistant. Built to pair with OpenOSINT.
 
 ## Sponsor this project
 
