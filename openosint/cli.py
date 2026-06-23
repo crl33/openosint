@@ -531,6 +531,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List current sponsors and featured integrations.",
     )
 
+    # playbook
+    playbook_cmd = subparsers.add_parser(
+        "playbook",
+        help="Run a deterministic investigation playbook (no AI required).",
+    )
+    playbook_cmd.add_argument(
+        "recipe",
+        type=str,
+        metavar="RECIPE",
+        help="Recipe name (e.g. 'domain') or path to a YAML file.",
+    )
+    playbook_cmd.add_argument(
+        "target",
+        type=str,
+        metavar="TARGET",
+        help="Investigation target (e.g. example.com).",
+    )
+
     return parser
 
 
@@ -760,6 +778,25 @@ async def _handle_footprint(
         _emit_json(format_tool_result("search_footprint", target, result))
     else:
         _print_result(result)
+
+
+async def _handle_playbook(
+    recipe_name: str,
+    target: str,
+    is_pdf_disabled: bool,
+) -> None:
+    from openosint.playbooks.loader import load_recipe
+    from openosint.playbooks.runner import run_playbook
+
+    try:
+        recipe = load_recipe(recipe_name)
+    except (ValueError, ImportError) as exc:
+        print(f"[!] {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"[*] Playbook '{recipe.label}' → {target}", file=sys.stderr)
+    report_path = await run_playbook(recipe, target, is_pdf_disabled=is_pdf_disabled)
+    print(f"[+] Report: {report_path}", file=sys.stderr)
 
 
 async def _handle_multi(
@@ -992,6 +1029,8 @@ async def _async_main() -> None:
             timeout=args.timeout,
             json_output=json_output,
         )
+    elif args.command == "playbook":
+        await _handle_playbook(args.recipe, args.target, is_pdf_disabled)
     elif args.command == "multi":
         await _handle_multi(
             args.targets, api_key=getattr(args, "api_key", None), is_pdf_disabled=is_pdf_disabled
