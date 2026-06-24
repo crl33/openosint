@@ -744,11 +744,13 @@ The framework is free and MIT-licensed. This is an optional paid setup service o
 
 *For authorized use only. See [DISCLAIMER.md](DISCLAIMER.md).*
 
+## Commercial License & Support
+
+OpenOSINT is free and MIT-licensed for everyone — personal projects, commercial products, SaaS, and closed-source are all covered with no purchase required. Organizations that additionally need a vendor contract, written warranty, indemnification, SLA, or priority support for procurement and compliance can purchase a commercial plan. Three tiers available from €300/year — see [COMMERCIAL.md](./COMMERCIAL.md) for full details and pricing. Contact: [commercial@openosint.tech](mailto:commercial@openosint.tech?subject=OpenOSINT%20Commercial%20Plan%20Inquiry).
+
 ## License
 
-OpenOSINT is open source under the [MIT License](./LICENSE) — free for personal, academic, and open source use.
-
-For commercial use in closed-source products, a separate license is required. → [Full details](./COMMERCIAL-LICENSE.md)
+OpenOSINT is open source under the [MIT License](./LICENSE) — free for any use, including personal, commercial, academic, and closed-source.
 
 ---
 
