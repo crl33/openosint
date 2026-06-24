@@ -78,7 +78,7 @@ def _format_search(results: dict, query: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def run_shodan_osint(query: str, timeout_seconds: int = _DEFAULT_TIMEOUT) -> str:
+async def run_shodan_osint(query: str, timeout_seconds: int = _DEFAULT_TIMEOUT, *, api_key: str | None = None) -> str:
     """
     Run a Shodan lookup for *query*.
 
@@ -93,8 +93,8 @@ async def run_shodan_osint(query: str, timeout_seconds: int = _DEFAULT_TIMEOUT) 
     str
         Formatted result string or descriptive error message.
     """
-    api_key = os.environ.get("SHODAN_API_KEY", "")
-    if not api_key:
+    resolved_key = api_key or os.environ.get("SHODAN_API_KEY", "")
+    if not resolved_key:
         return (
             "Scan error: SHODAN_API_KEY environment variable is not set. "
             "Get a free key at https://account.shodan.io"
@@ -107,7 +107,7 @@ async def run_shodan_osint(query: str, timeout_seconds: int = _DEFAULT_TIMEOUT) 
 
     logger.info("Starting Shodan lookup for: %s", query)
     try:
-        api = shodan.Shodan(api_key)
+        api = shodan.Shodan(resolved_key)
         if _is_ip_address(query):
             data = await asyncio.wait_for(
                 asyncio.to_thread(api.host, query),

@@ -257,7 +257,7 @@ def _lookup_hash(api_key: str, file_hash: str, timeout: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def run_virustotal_osint(target: str, timeout_seconds: int = _DEFAULT_TIMEOUT) -> str:
+async def run_virustotal_osint(target: str, timeout_seconds: int = _DEFAULT_TIMEOUT, *, api_key: str | None = None) -> str:
     """
     Check *target* against VirusTotal's 70+ antivirus engines.
 
@@ -271,8 +271,8 @@ async def run_virustotal_osint(target: str, timeout_seconds: int = _DEFAULT_TIME
     str
         Formatted result string or descriptive error message.
     """
-    api_key = os.environ.get("VIRUSTOTAL_API_KEY", "")
-    if not api_key:
+    resolved_key = api_key or os.environ.get("VIRUSTOTAL_API_KEY", "")
+    if not resolved_key:
         return (
             "Scan error: VIRUSTOTAL_API_KEY environment variable is not set. "
             "Get a free key at https://www.virustotal.com/gui/my-apikey"
@@ -284,13 +284,13 @@ async def run_virustotal_osint(target: str, timeout_seconds: int = _DEFAULT_TIME
 
     try:
         if input_type == "ip":
-            result = await asyncio.to_thread(_lookup_ip, api_key, target, timeout_seconds)
+            result = await asyncio.to_thread(_lookup_ip, resolved_key, target, timeout_seconds)
         elif input_type == "domain":
-            result = await asyncio.to_thread(_lookup_domain, api_key, target, timeout_seconds)
+            result = await asyncio.to_thread(_lookup_domain, resolved_key, target, timeout_seconds)
         elif input_type == "url":
-            result = await _lookup_url(api_key, target, timeout_seconds)
+            result = await _lookup_url(resolved_key, target, timeout_seconds)
         else:
-            result = await asyncio.to_thread(_lookup_hash, api_key, target, timeout_seconds)
+            result = await asyncio.to_thread(_lookup_hash, resolved_key, target, timeout_seconds)
         logger.info("VirusTotal lookup complete for: %s", target)
         return result
     except OSINTError as exc:

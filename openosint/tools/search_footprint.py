@@ -162,6 +162,8 @@ async def run_footprint_osint(
     target: str,
     max_queries: int = _DEFAULT_MAX_QUERIES,
     timeout_seconds: int = _DEFAULT_TIMEOUT,
+    *,
+    api_keys: dict[str, str] | None = None,
 ) -> str:
     """
     Collect a target's public search-engine footprint via the Bright Data SERP API.
@@ -191,11 +193,12 @@ async def run_footprint_osint(
         Formatted footprint report with graph-compatible URL lines, or a
         descriptive error message.
     """
-    api_key = os.environ.get("BRIGHTDATA_API_KEY", "")
+    _k = api_keys or {}
+    api_key = _k.get("BRIGHTDATA_API_KEY") or os.environ.get("BRIGHTDATA_API_KEY", "")
     if not api_key:
         return _MISSING_KEY_MSG
 
-    zone = os.environ.get("BRIGHTDATA_SERP_ZONE", "")
+    zone = _k.get("BRIGHTDATA_SERP_ZONE") or os.environ.get("BRIGHTDATA_SERP_ZONE", "")
     if not zone:
         return _MISSING_ZONE_MSG
 

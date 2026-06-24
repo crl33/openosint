@@ -117,7 +117,7 @@ def _format_domain_result(results: list, domain: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def run_censys_osint(target: str, timeout_seconds: int = _DEFAULT_TIMEOUT) -> str:
+async def run_censys_osint(target: str, timeout_seconds: int = _DEFAULT_TIMEOUT, *, api_keys: dict[str, str] | None = None) -> str:
     """
     Run a Censys lookup for *target*.
 
@@ -131,8 +131,9 @@ async def run_censys_osint(target: str, timeout_seconds: int = _DEFAULT_TIMEOUT)
     str
         Formatted result string or descriptive error message.
     """
-    api_id = os.environ.get("CENSYS_API_ID", "")
-    api_secret = os.environ.get("CENSYS_SECRET", "")
+    _k = api_keys or {}
+    api_id = _k.get("CENSYS_API_ID") or os.environ.get("CENSYS_API_ID", "")
+    api_secret = _k.get("CENSYS_SECRET") or os.environ.get("CENSYS_SECRET", "")
 
     if not api_id:
         return (

@@ -88,6 +88,8 @@ def _fetch_unlocker(url: str, api_key: str, zone: str, timeout: int) -> str:
 async def run_scrape_url_osint(
     url: str,
     timeout_seconds: int = _DEFAULT_TIMEOUT,
+    *,
+    api_keys: dict[str, str] | None = None,
 ) -> str:
     """
     Fetch *url* through Bright Data Web Unlocker and return clean Markdown.
@@ -107,11 +109,12 @@ async def run_scrape_url_osint(
     str
         Markdown content with a URL header line, or descriptive error message.
     """
-    api_key = os.environ.get("BRIGHTDATA_API_KEY", "")
+    _k = api_keys or {}
+    api_key = _k.get("BRIGHTDATA_API_KEY") or os.environ.get("BRIGHTDATA_API_KEY", "")
     if not api_key:
         return _MISSING_KEY_MSG
 
-    zone = os.environ.get("BRIGHTDATA_UNLOCKER_ZONE", "")
+    zone = _k.get("BRIGHTDATA_UNLOCKER_ZONE") or os.environ.get("BRIGHTDATA_UNLOCKER_ZONE", "")
     if not zone:
         return _MISSING_ZONE_MSG
 
