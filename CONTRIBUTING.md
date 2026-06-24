@@ -71,6 +71,15 @@ Add at least one test for the new tool in `tests/`. The test should:
 Add a row for the new service to the Integrations table in `README.md` with the
 service name, URL, tool name, and tier (`Community`).
 
+## Contributor License Agreement
+
+Before your first pull request can be merged, you must sign the
+[Contributor License Agreement (CLA)](./CLA.md). The CLA bot will post a comment on your
+PR with instructions — reply with the text shown to sign. Signing is a one-time action per
+GitHub account. It grants the maintainer a perpetual license to use your contributions,
+including a relicensing right that keeps future dual-licensing options open. You retain full
+ownership of your contributions.
+
 ## Reporting issues
 
 Use the issue templates on GitHub:
