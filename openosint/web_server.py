@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import time
+from collections import deque as _deque
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -42,18 +43,21 @@ from sse_starlette.sse import EventSourceResponse
 from openosint.brightdata import BRIGHTDATA_LINK_WEB
 from openosint.tools.generate_dorks import run_dork_osint
 from openosint.tools.scrape_url import run_scrape_url_osint
+from openosint.tools.search_abuseipdb import run_abuseipdb_osint
 from openosint.tools.search_breach import run_breach_osint
 from openosint.tools.search_censys import run_censys_osint
+from openosint.tools.search_dns import run_dns_osint
 from openosint.tools.search_domain import run_domain_osint
 from openosint.tools.search_dorks_live import run_dorks_live_osint
 from openosint.tools.search_email import run_email_osint
+from openosint.tools.search_footprint import run_footprint_osint
+from openosint.tools.search_github import run_github_osint
 from openosint.tools.search_ip import run_ip_osint
 from openosint.tools.search_ip2location import run_ip2location_osint
 from openosint.tools.search_paste import run_paste_osint
 from openosint.tools.search_phone import run_phone_osint
 from openosint.tools.search_shodan import run_shodan_osint
 from openosint.tools.search_username import run_username_osint
-from openosint.tools.search_footprint import run_footprint_osint
 from openosint.tools.search_virustotal import run_virustotal_osint
 from openosint.tools.search_whois import run_whois_osint
 from openosint import __version__ as _VERSION
@@ -63,6 +67,80 @@ _ROOT = Path(__file__).parent.parent
 # Web assets: prefer the package-relative path (pip install) with project-root fallback (dev/editable)
 _PACKAGE_WEB = Path(__file__).parent / "web"
 _WEB_DIR = _PACKAGE_WEB if _PACKAGE_WEB.exists() else _ROOT / "web"
+
+# ---------------------------------------------------------------------------
+# Demo mode / proxy / CORS config
+# ---------------------------------------------------------------------------
+
+# When True: no DB writes, no analytics.  api_keys are never logged regardless.
+DEMO_MODE: bool = os.getenv("OPENOSINT_DEMO_MODE", "").lower() in ("1", "true", "yes")
+
+# Trust CF-Connecting-IP / X-Forwarded-For for rate limiting only when
+# explicitly enabled — prevents IP spoofing in local dev.
+TRUSTED_PROXY: bool = os.getenv("TRUSTED_PROXY", "").lower() in ("1", "true", "yes")
+
+_RAW_ORIGINS: str = os.getenv(
+    "DEMO_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000"
+)
+_ALLOWED_ORIGINS: list[str] = [o.strip() for o in _RAW_ORIGINS.split(",") if o.strip()]
+
+# ---------------------------------------------------------------------------
+# In-process sliding-window rate limiter (keyless tools only)
+# ---------------------------------------------------------------------------
+
+_RATE_STORE: dict[str, "_deque[float]"] = {}
+_MAX_IP_BUCKETS: int = int(os.getenv("RATE_LIMIT_MAX_IPS", "10000"))
+_RL_WINDOW_SECS: float = float(os.getenv("RATE_LIMIT_WINDOW", "60"))
+_RL_MAX_REQS: int = int(os.getenv("RATE_LIMIT_MAX", "30"))
+
+# Tools that need no API key and are therefore cheaply spammable
+_KEYLESS_TOOLS: frozenset[str] = frozenset(
+    {"search_whois", "search_dns", "generate_dorks", "search_ip", "search_paste"}
+)
+
+
+def _get_client_ip(request: "Request") -> str:
+    """Return the real client IP, honouring proxy headers only when TRUSTED_PROXY is set."""
+    if TRUSTED_PROXY:
+        cf = request.headers.get("CF-Connecting-IP", "").strip()
+        if cf:
+            return cf
+        xff = request.headers.get("X-Forwarded-For", "").strip()
+        if xff:
+            return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(ip: str) -> bool:
+    """Sliding-window rate limiter. Returns True when the request is allowed."""
+    now = time.monotonic()
+
+    # Slide the window and evict empty bucket
+    if ip in _RATE_STORE:
+        q = _RATE_STORE[ip]
+        while q and now - q[0] > _RL_WINDOW_SECS:
+            q.popleft()
+        if not q:
+            del _RATE_STORE[ip]
+
+    # Enforce total bucket cap before inserting a new IP
+    if ip not in _RATE_STORE and len(_RATE_STORE) >= _MAX_IP_BUCKETS:
+        # Prefer evicting an already-expired bucket; fall back to oldest-inserted
+        evicted = False
+        for k, q in list(_RATE_STORE.items()):
+            if not q or now - q[0] > _RL_WINDOW_SECS:
+                del _RATE_STORE[k]
+                evicted = True
+                break
+        if not evicted:
+            del _RATE_STORE[next(iter(_RATE_STORE))]
+
+    q = _RATE_STORE.setdefault(ip, _deque())
+    if len(q) >= _RL_MAX_REQS:
+        return False
+    q.append(now)
+    return True
+
 
 # ---------------------------------------------------------------------------
 # Tool catalog — drives both the REST API and the frontend sidebar
@@ -961,7 +1039,8 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_ALLOWED_ORIGINS,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
