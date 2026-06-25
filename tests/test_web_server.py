@@ -794,6 +794,42 @@ class TestDemoMode:
         assert '"type": "done"' in body
 
 
+class TestCreateAppFactoryRoutes:
+    """Verify create_app() is fully self-serving — no CLI wrapper required."""
+
+    @pytest_asyncio.fixture
+    async def factory_client(self):
+        from openosint.web_server import create_app, _RATE_STORE
+
+        _RATE_STORE.clear()
+        app = create_app()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            yield c
+        _RATE_STORE.clear()
+
+    async def test_root_returns_html(self, factory_client):
+        resp = await factory_client.get("/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert resp.text.lstrip().startswith("<!DOCTYPE html>")
+
+    async def test_static_mount_serves_file(self, factory_client):
+        resp = await factory_client.get("/static/config.js")
+        assert resp.status_code == 200
+
+    async def test_health_demo_mode_flag(self, monkeypatch):
+        import openosint.web_server as ws
+        from openosint.web_server import _RATE_STORE
+
+        monkeypatch.setattr(ws, "DEMO_MODE", True)
+        _RATE_STORE.clear()
+        app = ws.create_app()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get("/api/health")
+        assert resp.status_code == 200
+        assert resp.json()["demo_mode"] is True
+
+
 class TestApiKeysNotLogged:
     async def test_secret_key_absent_from_log_records(self, http_client, caplog):
         secret = "top-secret-key-abc123"

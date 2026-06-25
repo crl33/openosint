@@ -38,6 +38,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from dotenv import load_dotenv
 from sse_starlette.sse import EventSourceResponse
 
 from openosint.brightdata import BRIGHTDATA_LINK_WEB
@@ -67,6 +68,8 @@ _ROOT = Path(__file__).parent.parent
 # Web assets: prefer the package-relative path (pip install) with project-root fallback (dev/editable)
 _PACKAGE_WEB = Path(__file__).parent / "web"
 _WEB_DIR = _PACKAGE_WEB if _PACKAGE_WEB.exists() else _ROOT / "web"
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Demo mode / proxy / CORS config
@@ -1495,8 +1498,6 @@ def create_app() -> FastAPI:
 
 async def serve_async(host: str = "0.0.0.0", port: int = 8080) -> None:
     """Run uvicorn within an already-running asyncio event loop."""
-    from dotenv import load_dotenv
-
     load_dotenv()
     app = create_app()
     _print_banner(host, port)
@@ -1507,8 +1508,6 @@ async def serve_async(host: str = "0.0.0.0", port: int = 8080) -> None:
 
 def run_server(host: str = "0.0.0.0", port: int = 8080) -> None:
     """Standalone blocking entry point."""
-    from dotenv import load_dotenv
-
     load_dotenv()
     app = create_app()
     _print_banner(host, port)
