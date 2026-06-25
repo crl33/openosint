@@ -29,6 +29,14 @@ mcp-name: io.github.OpenOSINT/openosint
 </div>
 
 <div align="center">
+
+[![▶ Try the live demo](https://img.shields.io/badge/%E2%96%B6%20Try%20the%20live%20demo-demo.openosint.tech-brightgreen?style=for-the-badge)](https://demo.openosint.tech)
+
+*Run a real OSINT investigation in your browser — bring your own Anthropic / OpenRouter / Ollama key, no signup.*
+
+</div>
+
+<div align="center">
   <a href="https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/main/docs/assets/demo-web-graph.mp4">
     <img src="https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/main/docs/assets/demo-web-graph.gif"
          alt="OpenOSINT Web UI — live entity correlation graph demo: investigating openosint.tech"

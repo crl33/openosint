@@ -17,6 +17,14 @@
 <meta name="twitter:description" content="Open-source OSINT framework with 14 intelligence tools, MCP server, and AI-powered REPL for AI agents.">
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="stylesheet" href="style.css">
+<script>
+  window.addEventListener('load', function () {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      var el = document.querySelector('.hero-video');
+      if (el) { el.removeAttribute('autoplay'); el.setAttribute('controls', ''); }
+    }
+  });
+</script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -56,6 +64,7 @@
 <span class="nav-sep">|</span><a href="/free-prompts/?utm_source=site&amp;utm_medium=nav&amp;utm_campaign=free_starter" class="nav-cta">FREE PROMPTS</a>
 <a href="/commercial/" style="color:#f0a732;font-weight:bold;">FOR TEAMS</a>
 <a href="https://github.com/OpenOSINT/OpenOSINT" target="_blank" rel="noopener">GITHUB</a>
+<span class="nav-sep">|</span><a href="https://demo.openosint.tech" class="nav-cta">&#9654; LIVE DEMO</a>
 <span class="nav-sep">|</span><a href="/sponsors.html" class="nav-cta">&#10084; Sponsor</a>
 </div>
 
@@ -71,9 +80,20 @@
 </table>
 </div>
 
+<div style="background:#f0fff4;border:2px solid #3fb950;border-radius:6px;padding:18px 24px;margin:12px 0 0;text-align:center;font-family:monospace;">
+  <video class="hero-video" autoplay muted loop playsinline preload="metadata"
+         poster="assets/demo-web-graph-poster.jpg"
+         style="width:100%;max-width:860px;height:auto;display:block;margin:0 auto 16px;border-radius:4px;border:1px solid #2ea043;">
+    <source src="assets/demo-web-graph.mp4" type="video/mp4">
+  </video>
+  <p style="margin:0 0 6px;font-size:1.05rem;font-weight:bold;color:#000;">&#9654; Try the live demo</p>
+  <p style="color:#444;margin:0 0 14px;font-size:0.88rem;">Run a real OSINT investigation in your browser &mdash; bring your own Anthropic / OpenRouter / Ollama key, no signup.</p>
+  <a href="https://demo.openosint.tech" style="display:inline-block;background:#3fb950;color:#000;padding:10px 24px;border-radius:4px;text-decoration:none;font-weight:bold;font-family:monospace;font-size:14px;">Try the live demo &rarr;</a>
+</div>
+
 <hr>
 
-<div style="background:#fffdf0;border:1px solid #ddd;border-left:4px solid #f0a732;padding:14px 18px;margin:16px 0;font-family:monospace;font-size:13px;">
+<div style="background:#fffdf0;border:1px solid #ddd;border-left:2px solid #bbb;padding:14px 18px;margin:16px 0;font-family:monospace;font-size:13px;">
 <p style="margin:0 0 6px 0;"><b>Custom OSINT &amp; MCP Integrations</b> &mdash; Bespoke OSINT &amp; MCP integrations wired into your SOC, fraud, threat-intel, or AI-agent stack. You bring the data sources and compliance requirements; I deliver a working, maintainable integration.</p>
 <p style="margin:0 0 8px 0;color:#444;">Maintainer of OpenOSINT (700+ stars) &middot; MCP-native</p>
 <p style="margin:0;"><a href="mailto:openosint@yahoo.com?subject=OpenOSINT%20Custom%20Integration" style="color:#3fb950;font-weight:bold;">Get in touch &rarr;</a></p>
@@ -128,7 +148,7 @@ openosint [<b>-v</b>] [<b>--api-key</b> <u>key</u>]</pre>
 <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:14px;">
   <div style="flex:1; min-width:280px;">
     <p><b>Web Interface</b></p>
-    <img src="assets/web-demo.gif"
+    <img src="assets/demo-web-graph.gif"
          alt="OpenOSINT web interface demo"
          style="max-width:100%; border:1px solid #333; display:block;">
     <p style="margin-top:6px;"><em>Browser-based chat UI &mdash; run <code>openosint web</code></em></p>
