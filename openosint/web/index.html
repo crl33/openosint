@@ -343,7 +343,8 @@
       <span x-show="!_isByokReady() && aiBackend === 'claude'">Claude (server)</span>
       <span x-show="!_isByokReady() && aiBackend === 'ollama'">Ollama (server)</span>
       <span x-show="!_isByokReady() && aiBackend === 'openai'">OpenAI (server)</span>
-      <span x-show="!_isByokReady() && aiBackend === 'none'">Not configured — add key in Settings</span>
+      <span x-show="!_isByokReady() && aiBackend === 'none' && serverSideFallback">Not configured — add key in Settings</span>
+      <span x-show="!_isByokReady() && !serverSideFallback">Demo mode — add key in Settings</span>
     </button>
   </div>
 
@@ -402,6 +403,18 @@
          class="flex-1 flex flex-col justify-center py-16">
       <h1 class="text-lg font-mono font-medium text-primary mb-1">OpenOSINT</h1>
       <p class="text-muted text-sm mb-8">AI-powered OSINT investigations. Enter a target to begin.</p>
+      <!-- demo-mode onboarding: server AI disabled, no BYOK key yet -->
+      <div x-show="!serverSideFallback && !_isByokReady()"
+           class="mb-8 border border-app rounded-lg p-4 bg-surface">
+        <p class="text-sm text-primary font-medium mb-1">Add your own API key to get started</p>
+        <p class="text-muted text-xs mb-3 leading-relaxed">
+          This is a live demo — server-side AI is disabled. Bring your own Anthropic, Ollama, or OpenRouter key to run real investigations.
+        </p>
+        <button @click="showSettings = true"
+                class="px-4 py-2 rounded-md bg-accent hover:bg-accent-80 text-bg text-xs font-medium transition-colors">
+          Open Settings →
+        </button>
+      </div>
       <div class="flex flex-wrap gap-2">
         <template x-for="s in suggestions" :key="s.title">
           <button @click="sendSuggestion(s.prompt)"
@@ -561,6 +574,7 @@ document.addEventListener('alpine:init', () => {
     setupData: {},
     isLight: false,
     agentLoopReady: false,
+    serverSideFallback: true,
 
     // BYOK LLM settings — persisted to sessionStorage (cleared on tab close)
     byok: { provider: 'anthropic', apiKey: '', baseUrl: '', model: '' },
@@ -688,8 +702,9 @@ document.addEventListener('alpine:init', () => {
         const r = await fetch('/api/health');
         if (!r.ok) return;
         const d = await r.json();
-        this.version   = d.version    || this.version;
-        this.aiBackend = d.ai_backend || 'none';
+        this.version          = d.version    || this.version;
+        this.aiBackend        = d.ai_backend || 'none';
+        this.serverSideFallback = !d.demo_mode;
         if (d.ollama_host) this.settings.ollamaHost = d.ollama_host;
         if (this.aiBackend === 'ollama') this.settings.chatModel = 'ollama';
         else if (this.aiBackend === 'openai') this.settings.chatModel = 'openai';
@@ -731,6 +746,13 @@ document.addEventListener('alpine:init', () => {
       // Amendment 5: guard against race where module hasn't loaded yet.
       if (useClient && !this.agentLoopReady) {
         this._pushError('Agent loop is initializing — please try again in a moment.');
+        return;
+      }
+
+      // Demo-mode guard: server LLM disabled and no BYOK key.
+      if (!useClient && !this.serverSideFallback) {
+        this.showSettings = true;
+        this._pushError('Server-side AI is disabled in demo mode. Add your API key in Settings to run investigations.');
         return;
       }
 
