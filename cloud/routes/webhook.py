@@ -130,6 +130,22 @@ async def _handle_subscription_update(data: dict) -> None:
         )
 
 
+async def _handle_checkout_updated(data: dict) -> None:
+    """
+    LOG-ONLY — no link-write logic yet.
+
+    This is the payload-confirmation gate for the OAuth-login → api_key
+    linking feature: reference_id (== users.id, passed as a ?reference_id=
+    query param on the hosted checkout link) is expected to land in this
+    event's checkout-session metadata per Polar's docs, but the exact JSON
+    path, the completed-checkout status value, and whether data.customer_id
+    is present here the same way it is on benefit_grant.created are all
+    unconfirmed against a live payload. Do not add link-write logic until
+    a real/test checkout has been inspected and those three facts verified.
+    """
+    logger.info("checkout.updated payload: %s", data)
+
+
 # ── dispatch table ────────────────────────────────────────────────────────────
 
 _HANDLERS = {
@@ -137,6 +153,7 @@ _HANDLERS = {
     polar.EVT_BENEFIT_GRANT_UPDATED: _handle_benefit_grant,
     polar.EVT_BENEFIT_GRANT_REVOKED: _handle_benefit_revoke,
     polar.EVT_SUBSCRIPTION_UPDATED:  _handle_subscription_update,
+    polar.EVT_CHECKOUT_UPDATED:      _handle_checkout_updated,
 }
 
 

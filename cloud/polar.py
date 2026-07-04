@@ -22,6 +22,9 @@ Polar webhook event type strings subscribed to in this gateway:
   - benefit_grant.updated   (key refresh / status change)
   - benefit_grant.revoked   (account deactivated → zero credits)
   - subscription.updated    (renewal → refill credits when status == "active")
+  - checkout.updated        (log-only for now — candidate carrier for the
+                             reference_id → users linking metadata; payload
+                             not yet confirmed against a live event)
 
 ⚠️  Verify these string values in Polar dashboard → Developer → Webhooks
     → Send test event → select event type → inspect the "type" field.
@@ -49,6 +52,7 @@ EVT_BENEFIT_GRANT_CREATED = "benefit_grant.created"
 EVT_BENEFIT_GRANT_UPDATED = "benefit_grant.updated"
 EVT_BENEFIT_GRANT_REVOKED = "benefit_grant.revoked"
 EVT_SUBSCRIPTION_UPDATED  = "subscription.updated"
+EVT_CHECKOUT_UPDATED      = "checkout.updated"
 
 
 # ── webhook signature verification ───────────────────────────────────────────
