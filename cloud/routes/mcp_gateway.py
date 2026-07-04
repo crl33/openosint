@@ -2,26 +2,26 @@
 OpenOSINT Cloud — hosted MCP server endpoint (Streamable HTTP transport).
 
 Mounted at /mcp inside the existing FastAPI app (cloud/main.py).
-Exposes exactly the same 5 infrastructure tools as /v1/enrich.
+Exposes exactly the same tools as /v1/enrich (cloud/tools.ALLOW_LIST).
 No person-search, breach, or leaked-data tools.
 
 Auth: Authorization: Bearer <openosint-cloud-api-key>
-Metering: 1 credit per successful call — same rules as /v1/enrich.
-All existing functions (dispatch, _resolve_key, decrement_credits) are reused.
+Metering: per-tool credit cost (see cloud/key_sources.get_credit_cost) — same
+rules as /v1/enrich. Platform-pool tools are also burst-limited per tenant.
+All existing functions (dispatch, resolve_key, decrement_credits) are reused.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from contextvars import ContextVar
 
 from mcp.server.fastmcp import FastMCP
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from cloud import db, keys, tools
+from cloud import db, rate_limit, tools
 from cloud.config import CHECKOUT_URLS, TOOL_TIMEOUT_SECONDS
-from cloud.key_sources import TOOL_KEY_CONFIG, KeySource
+from cloud.key_sources import get_credit_cost, is_platform_pool_tool, resolve_key
 
 logger = logging.getLogger(__name__)
 
@@ -37,25 +37,6 @@ _mcp = FastMCP(
     "OpenOSINT Cloud",
     streamable_http_path="/",
 )
-
-
-# ── shared business logic (mirrors cloud/routes/enrich.py) ───────────────────
-
-async def _resolve_key(tool: str, customer: db.Customer) -> str | None:
-    """Resolve upstream API key from TOOL_KEY_CONFIG — identical to /v1/enrich."""
-    cfg = TOOL_KEY_CONFIG.get(tool)
-    if cfg is None or cfg.source == KeySource.none:
-        return None
-    if cfg.source == KeySource.server:
-        return os.environ.get(cfg.env_var or "", "") or None
-    stored = await keys.get_key(customer.api_key, cfg.provider)
-    if cfg.source == KeySource.customer and stored is None:
-        raise ValueError(
-            f"Tool '{tool}' requires a '{cfg.provider}' API key. "
-            f"Add it via: POST /v1/keys "
-            f'{{"provider": "{cfg.provider}", "secret": "your_key"}}'
-        )
-    return stored
 
 
 def _credits_error(plan: str) -> str:
@@ -84,11 +65,17 @@ async def _run_mcp_tool(tool_name: str, target: str) -> str:
         )
 
     try:
-        upstream_key = await _resolve_key(tool_name, customer)
+        upstream_key = await resolve_key(tool_name, customer.api_key)
     except ValueError as exc:
         return f"Error: {exc}"
 
-    if customer.credits <= 0:
+    if is_platform_pool_tool(tool_name) and not rate_limit.platform_pool_limiter.allow(
+        f"{customer.api_key}:{tool_name}"
+    ):
+        return f"Error: Too many '{tool_name}' requests. Please slow down and try again shortly."
+
+    cost = get_credit_cost(tool_name)
+    if customer.credits < cost:
         return _credits_error(customer.plan)
 
     try:
@@ -106,7 +93,7 @@ async def _run_mcp_tool(tool_name: str, target: str) -> str:
     is_error = any(first_line.startswith(p) for p in _ERROR_PREFIXES)
 
     if not is_error:
-        new_credits = await db.decrement_credits(customer.api_key)
+        new_credits = await db.decrement_credits(customer.api_key, cost)
         if new_credits is None:
             # Race condition: concurrent request drained the last credit
             return _credits_error(customer.plan)
@@ -157,6 +144,33 @@ async def search_dns(target: str) -> str:
 async def search_domain(target: str) -> str:
     """target: Apex domain name (e.g. example.com)"""
     return await _run_mcp_tool("search_domain", target)
+
+
+@_mcp.tool(description=(
+    "Look up an IP host or run a keyword search via Shodan. Returns open ports, "
+    "banners, and device/service fingerprints. Data provided by Shodan (shodan.io)."
+))
+async def search_shodan(target: str) -> str:
+    """target: IPv4 address for a host lookup, or a keyword query for a search"""
+    return await _run_mcp_tool("search_shodan", target)
+
+
+@_mcp.tool(description=(
+    "Check an IP, domain, URL, or file hash against VirusTotal's 70+ antivirus "
+    "and URL/domain reputation engines."
+))
+async def search_virustotal(target: str) -> str:
+    """target: IPv4 address, domain, URL, or file hash (MD5/SHA-1/SHA-256)"""
+    return await _run_mcp_tool("search_virustotal", target)
+
+
+@_mcp.tool(description=(
+    "Look up an IP host (open ports, services, ASN) or domain certificates "
+    "(SANs, issuer, validity dates) via Censys."
+))
+async def search_censys(target: str) -> str:
+    """target: IPv4 address or domain name"""
+    return await _run_mcp_tool("search_censys", target)
 
 
 # ── auth middleware ───────────────────────────────────────────────────────────

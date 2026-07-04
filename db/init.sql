@@ -30,3 +30,26 @@ CREATE TABLE IF NOT EXISTS customer_keys (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (api_key, provider)
 );
+
+-- OAuth login identities (GitHub / Google). Purely a web-dashboard login
+-- layer on top of the api_key model — X-API-Key / MCP bearer auth never
+-- reads this table. One OAuth identity links to at most one customer key
+-- and vice versa (partial unique index below).
+CREATE TABLE IF NOT EXISTS users (
+    id                SERIAL      PRIMARY KEY,
+    provider          TEXT        NOT NULL,
+    provider_user_id  TEXT        NOT NULL,
+    email             TEXT,
+    -- Rendezvous key: written by the checkout.updated webhook so the
+    -- benefit_grant.created webhook (which creates/updates `customers`)
+    -- can complete the link below regardless of which event arrives first.
+    polar_customer_id TEXT,
+    customer_api_key  TEXT        REFERENCES customers(api_key) ON DELETE SET NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (provider, provider_user_id)
+);
+
+-- Enforces strict 1:0-or-1: a customer key can be linked to at most one user.
+CREATE UNIQUE INDEX IF NOT EXISTS users_customer_api_key_idx
+    ON users (customer_api_key)
+    WHERE customer_api_key IS NOT NULL;

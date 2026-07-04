@@ -136,7 +136,7 @@ async def test_non_allowlisted_tool_returns_400(client):
     _seed("key-400", credits=10)
     resp = await client.post(
         "/v1/enrich",
-        json={"tool": "search_shodan", "target": "8.8.8.8"},
+        json={"tool": "search_breach", "target": "8.8.8.8"},
         headers={"X-API-Key": "key-400"},
     )
     assert resp.status_code == 400
@@ -176,6 +176,40 @@ async def test_key_store_retrieve_roundtrip():
     assert keys.mask("ab") == "****"
     assert keys.mask("abcd") == "****"
     assert keys.mask("abcde") == "****bcde"
+
+
+# ── (e2) censys compound secret: bad format rejected, good format round-trips ─
+
+
+async def test_censys_secret_bad_format_returns_422(client):
+    _seed("key-censys-bad", credits=5)
+    resp = await client.post(
+        "/v1/keys",
+        json={"provider": "censys", "secret": "no-colon-here"},
+        headers={"X-API-Key": "key-censys-bad"},
+    )
+    assert resp.status_code == 422
+    assert "censys" in resp.json()["detail"]
+    assert await keys.get_key("key-censys-bad", "censys") is None
+
+
+async def test_censys_secret_well_formed_round_trips_to_censys_keys(client):
+    from cloud.tools import _censys_keys
+
+    _seed("key-censys-good", credits=5)
+    resp = await client.post(
+        "/v1/keys",
+        json={"provider": "censys", "secret": "myapiid:myapisecret"},
+        headers={"X-API-Key": "key-censys-good"},
+    )
+    assert resp.status_code == 204
+
+    stored = await keys.get_key("key-censys-good", "censys")
+    assert stored == "myapiid:myapisecret"
+    assert _censys_keys(stored) == {
+        "CENSYS_API_ID": "myapiid",
+        "CENSYS_SECRET": "myapisecret",
+    }
 
 
 # ── (f) enrich uses stored customer key ──────────────────────────────────────
@@ -258,6 +292,72 @@ async def test_server_source_reads_env_key(client):
     assert db._MEMORY_CUSTOMERS["key-server"].credits == 4
 
 
+# ── (h2) per-tool credit cost + platform-pool burst limiter ─────────────────
+
+
+async def test_shodan_costs_configured_credit_amount(client):
+    from cloud.config import SHODAN_CREDIT_COST
+
+    _seed("key-shodan-cost", credits=10)
+
+    async def fake_dispatch(tool, target, api_key=None):
+        return {
+            "tool": tool,
+            "target": target,
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "results": ["[Shodan] Host: 1.2.3.4"],
+            "error": None,
+        }
+
+    with patch("cloud.tools.dispatch", new=fake_dispatch):
+        with patch.dict(os.environ, {"SHODAN_API_KEY": "srv_shodan_key"}):
+            resp = await client.post(
+                "/v1/enrich",
+                json={"tool": "search_shodan", "target": "1.2.3.4"},
+                headers={"X-API-Key": "key-shodan-cost"},
+            )
+
+    assert resp.status_code == 200
+    assert resp.json()["credits_left"] == 10 - SHODAN_CREDIT_COST
+    assert db._MEMORY_CUSTOMERS["key-shodan-cost"].credits == 10 - SHODAN_CREDIT_COST
+
+
+async def test_platform_pool_burst_limit_returns_429(client):
+    from cloud.config import SHODAN_CREDIT_COST
+    from cloud.rate_limit import InProcessSlidingWindowLimiter
+
+    _seed("key-burst", credits=10)
+
+    async def fake_dispatch(tool, target, api_key=None):
+        return {
+            "tool": tool,
+            "target": target,
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "results": ["[Shodan] Host: 1.2.3.4"],
+            "error": None,
+        }
+
+    one_call_limiter = InProcessSlidingWindowLimiter(window_secs=60, max_calls=1)
+    with patch("cloud.rate_limit.platform_pool_limiter", one_call_limiter):
+        with patch("cloud.tools.dispatch", new=fake_dispatch):
+            with patch.dict(os.environ, {"SHODAN_API_KEY": "srv_shodan_key"}):
+                first = await client.post(
+                    "/v1/enrich",
+                    json={"tool": "search_shodan", "target": "1.2.3.4"},
+                    headers={"X-API-Key": "key-burst"},
+                )
+                second = await client.post(
+                    "/v1/enrich",
+                    json={"tool": "search_shodan", "target": "1.2.3.4"},
+                    headers={"X-API-Key": "key-burst"},
+                )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    # Rejected (429) call must not be charged
+    assert db._MEMORY_CUSTOMERS["key-burst"].credits == 10 - SHODAN_CREDIT_COST
+
+
 # ── (i) upstream error leaves credits unchanged ──────────────────────────────
 
 
@@ -286,14 +386,43 @@ async def test_upstream_error_leaves_credits_unchanged(client):
     assert db._MEMORY_CUSTOMERS["key-err"].credits == 5
 
 
+async def test_platform_pool_upstream_error_charges_zero_credits(client):
+    """A >1-cost platform tool (Shodan) must not charge on upstream failure."""
+    _seed("key-shodan-err", credits=10)
+
+    error_result = {
+        "tool": "search_shodan",
+        "target": "1.2.3.4",
+        "timestamp": "2026-01-01T00:00:00+00:00",
+        "results": ["Scan error: Shodan quota exceeded"],
+        "error": None,
+    }
+
+    with patch("cloud.tools.dispatch", new=AsyncMock(return_value=error_result)):
+        with patch.dict(os.environ, {"SHODAN_API_KEY": "srv_shodan_key"}):
+            resp = await client.post(
+                "/v1/enrich",
+                json={"tool": "search_shodan", "target": "1.2.3.4"},
+                headers={"X-API-Key": "key-shodan-err"},
+            )
+
+    assert resp.status_code == 200
+    assert resp.json()["results"] == ["Scan error: Shodan quota exceeded"]
+    assert resp.json()["credits_left"] == 10
+    assert db._MEMORY_CUSTOMERS["key-shodan-err"].credits == 10
+
+
 # ── (j) allow-list shape and removed-tool 400s ───────────────────────────────
 
 from cloud.tools import ALLOW_LIST as _ALLOW_LIST
 
-_EXPECTED_TOOLS = {"search_ip", "search_ip2location", "search_abuseipdb", "search_dns", "search_domain"}
+_EXPECTED_TOOLS = {
+    "search_ip", "search_ip2location", "search_abuseipdb", "search_dns", "search_domain",
+    "search_shodan", "search_virustotal", "search_censys",
+}
 
 
-def test_allow_list_is_exactly_5_infrastructure_tools():
+def test_allow_list_is_exactly_the_infrastructure_tools():
     assert set(_ALLOW_LIST.keys()) == _EXPECTED_TOOLS
 
 
@@ -350,3 +479,43 @@ async def test_benefit_grant_created_fetches_full_license_key():
     assert "FULLKEY" in db._MEMORY_CUSTOMERS
     assert db._MEMORY_CUSTOMERS["FULLKEY"].api_key == "FULLKEY"
     assert db._MEMORY_CUSTOMERS["FULLKEY"].polar_customer_id == "polar_cust_001"
+
+
+# ── (l) Shodan attribution appended only for search_shodan ───────────────────
+
+
+async def test_dispatch_appends_shodan_attribution():
+    from cloud import tools as cloud_tools
+
+    with patch("cloud.tools.run_shodan_osint", new=AsyncMock(return_value="[Shodan] Host: 1.2.3.4")):
+        result = await cloud_tools.dispatch("search_shodan", "1.2.3.4", api_key="k")
+
+    assert result["results"][-1] == "Data provided by Shodan (shodan.io)."
+
+
+async def test_dispatch_does_not_attribute_other_tools():
+    from cloud import tools as cloud_tools
+
+    with patch("cloud.tools.run_dns_osint", new=AsyncMock(return_value="A: 1.2.3.4")):
+        result = await cloud_tools.dispatch("search_dns", "example.com", api_key=None)
+
+    assert "Data provided by Shodan (shodan.io)." not in result["results"]
+
+
+async def test_shodan_attribution_reaches_rest_response_body(client):
+    """Attribution must survive to the actual JSON body the client parses,
+    not just the internal dispatch() dict — real dispatch() runs here, only
+    the low-level upstream call is mocked."""
+    _seed("key-shodan-attr", credits=10)
+
+    with patch("cloud.tools.run_shodan_osint", new=AsyncMock(return_value="[Shodan] Host: 1.2.3.4")):
+        with patch.dict(os.environ, {"SHODAN_API_KEY": "srv_shodan_key"}):
+            resp = await client.post(
+                "/v1/enrich",
+                json={"tool": "search_shodan", "target": "1.2.3.4"},
+                headers={"X-API-Key": "key-shodan-attr"},
+            )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["results"] == ["[Shodan] Host: 1.2.3.4", "Data provided by Shodan (shodan.io)."]
