@@ -13,6 +13,8 @@ entry here.  No other files need to change.
 Canonical provider strings (used by POST /v1/keys and 422 messages):
   "ipinfo"      — ipinfo.io token (search_ip)
   "abuseipdb"   — AbuseIPDB API key (search_abuseipdb)
+  "virustotal"  — VirusTotal API key (search_virustotal)
+  "censys"      — Censys credentials, stored as "api_id:api_secret" (search_censys)
 """
 from __future__ import annotations
 
@@ -40,13 +42,57 @@ class ToolKeyConfig(NamedTuple):
 TOOL_KEY_CONFIG: dict[str, ToolKeyConfig] = {
     # Sponsored — key is platform-provided; tenants get this included.
     "search_ip2location": ToolKeyConfig("IP2LOCATION_API_KEY", KeySource.platform, provider=None),
+    # Platform pool — Shodan ToS requires attribution on every response (see
+    # cloud/tools.py dispatch(); attribution wiring lands in a later commit).
+    "search_shodan":      ToolKeyConfig("SHODAN_API_KEY",      KeySource.platform, provider=None),
     # BYOK required — tenant must POST /v1/keys with the provider string below.
+    # Never platform/tenant_optional: upstream ToS forbids a shared platform key.
     "search_ip":          ToolKeyConfig("IPINFO_TOKEN",        KeySource.tenant,   provider="ipinfo"),
     "search_abuseipdb":   ToolKeyConfig("ABUSEIPDB_API_KEY",   KeySource.tenant,   provider="abuseipdb"),
+    "search_virustotal":  ToolKeyConfig("VIRUSTOTAL_API_KEY",  KeySource.tenant,   provider="virustotal"),
+    "search_censys":      ToolKeyConfig(None,                  KeySource.tenant,   provider="censys"),
     # No credential required.
     "search_dns":         ToolKeyConfig(None,                  KeySource.none,     provider=None),
     "search_domain":      ToolKeyConfig(None,                  KeySource.none,     provider=None),
 }
+
+
+# Censys stores two credentials (API ID + secret) under one BYOK provider
+# slot, concatenated in this exact format. Split on the FIRST colon only, so
+# a secret that itself contains ':' stays intact as the second part.
+CENSYS_SECRET_FORMAT = "<api_id>:<api_secret>"
+
+# Per-provider placeholder shown in POST /v1/keys examples and 422 messages.
+# Providers not listed use a plain opaque-key placeholder.
+_DEFAULT_SECRET_HINT = "your_key"
+PROVIDER_SECRET_HINT: dict[str, str] = {
+    "censys": CENSYS_SECRET_FORMAT,
+}
+
+
+class InvalidSecretFormatError(ValueError):
+    """Raised when a secret submitted to POST /v1/keys doesn't match its
+    provider's required format (currently only Censys has a compound format)."""
+
+    def __init__(self, provider: str, detail: str) -> None:
+        self.provider = provider
+        super().__init__(detail)
+
+
+def validate_secret_format(provider: str, secret: str) -> None:
+    """Validate provider-specific secret formats before storage.
+
+    No-op for providers with a plain opaque-key format. Raises
+    InvalidSecretFormatError on a malformed compound secret (e.g. Censys).
+    """
+    if provider == "censys":
+        api_id, sep, api_secret = secret.partition(":")
+        if not sep or not api_id or not api_secret:
+            raise InvalidSecretFormatError(
+                provider,
+                f"Invalid 'censys' secret format. Expected \"{CENSYS_SECRET_FORMAT}\" "
+                "with both parts non-empty, separated by a colon.",
+            )
 
 
 class MissingCredentialError(ValueError):
@@ -59,10 +105,11 @@ class MissingCredentialError(ValueError):
     def __init__(self, tool: str, provider: str) -> None:
         self.tool = tool
         self.provider = provider
+        hint = PROVIDER_SECRET_HINT.get(provider, _DEFAULT_SECRET_HINT)
         super().__init__(
             f"Tool '{tool}' requires a connected '{provider}' key. "
             f"Connect it with: POST /v1/keys "
-            f'{{"provider": "{provider}", "secret": "your_key"}}'
+            f'{{"provider": "{provider}", "secret": "{hint}"}}'
         )
 
 

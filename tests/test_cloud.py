@@ -136,7 +136,7 @@ async def test_non_allowlisted_tool_returns_400(client):
     _seed("key-400", credits=10)
     resp = await client.post(
         "/v1/enrich",
-        json={"tool": "search_shodan", "target": "8.8.8.8"},
+        json={"tool": "search_breach", "target": "8.8.8.8"},
         headers={"X-API-Key": "key-400"},
     )
     assert resp.status_code == 400
@@ -176,6 +176,40 @@ async def test_key_store_retrieve_roundtrip():
     assert keys.mask("ab") == "****"
     assert keys.mask("abcd") == "****"
     assert keys.mask("abcde") == "****bcde"
+
+
+# ── (e2) censys compound secret: bad format rejected, good format round-trips ─
+
+
+async def test_censys_secret_bad_format_returns_422(client):
+    _seed("key-censys-bad", credits=5)
+    resp = await client.post(
+        "/v1/keys",
+        json={"provider": "censys", "secret": "no-colon-here"},
+        headers={"X-API-Key": "key-censys-bad"},
+    )
+    assert resp.status_code == 422
+    assert "censys" in resp.json()["detail"]
+    assert await keys.get_key("key-censys-bad", "censys") is None
+
+
+async def test_censys_secret_well_formed_round_trips_to_censys_keys(client):
+    from cloud.tools import _censys_keys
+
+    _seed("key-censys-good", credits=5)
+    resp = await client.post(
+        "/v1/keys",
+        json={"provider": "censys", "secret": "myapiid:myapisecret"},
+        headers={"X-API-Key": "key-censys-good"},
+    )
+    assert resp.status_code == 204
+
+    stored = await keys.get_key("key-censys-good", "censys")
+    assert stored == "myapiid:myapisecret"
+    assert _censys_keys(stored) == {
+        "CENSYS_API_ID": "myapiid",
+        "CENSYS_SECRET": "myapisecret",
+    }
 
 
 # ── (f) enrich uses stored customer key ──────────────────────────────────────
@@ -290,10 +324,13 @@ async def test_upstream_error_leaves_credits_unchanged(client):
 
 from cloud.tools import ALLOW_LIST as _ALLOW_LIST
 
-_EXPECTED_TOOLS = {"search_ip", "search_ip2location", "search_abuseipdb", "search_dns", "search_domain"}
+_EXPECTED_TOOLS = {
+    "search_ip", "search_ip2location", "search_abuseipdb", "search_dns", "search_domain",
+    "search_shodan", "search_virustotal", "search_censys",
+}
 
 
-def test_allow_list_is_exactly_5_infrastructure_tools():
+def test_allow_list_is_exactly_the_infrastructure_tools():
     assert set(_ALLOW_LIST.keys()) == _EXPECTED_TOOLS
 
 

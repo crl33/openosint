@@ -111,6 +111,9 @@ _EXPECTED_MCP_TOOLS = {
     "search_abuseipdb",
     "search_dns",
     "search_domain",
+    "search_shodan",
+    "search_virustotal",
+    "search_censys",
 }
 
 
@@ -126,7 +129,7 @@ def test_mcp_tool_set_matches_rest_allow_list_keys():
 
 def test_unlisted_tools_not_in_mcp():
     registered = {t.name for t in _mcp._tool_manager.list_tools()}
-    for blocked in ("search_email", "search_username", "search_breach", "search_shodan"):
+    for blocked in ("search_email", "search_username", "search_breach", "search_paste"):
         assert blocked not in registered
 
 

@@ -2,7 +2,7 @@
 OpenOSINT Cloud — hosted MCP server endpoint (Streamable HTTP transport).
 
 Mounted at /mcp inside the existing FastAPI app (cloud/main.py).
-Exposes exactly the same 5 infrastructure tools as /v1/enrich.
+Exposes exactly the same tools as /v1/enrich (cloud/tools.ALLOW_LIST).
 No person-search, breach, or leaked-data tools.
 
 Auth: Authorization: Bearer <openosint-cloud-api-key>
@@ -137,6 +137,33 @@ async def search_dns(target: str) -> str:
 async def search_domain(target: str) -> str:
     """target: Apex domain name (e.g. example.com)"""
     return await _run_mcp_tool("search_domain", target)
+
+
+@_mcp.tool(description=(
+    "Look up an IP host or run a keyword search via Shodan. Returns open ports, "
+    "banners, and device/service fingerprints. Data provided by Shodan (shodan.io)."
+))
+async def search_shodan(target: str) -> str:
+    """target: IPv4 address for a host lookup, or a keyword query for a search"""
+    return await _run_mcp_tool("search_shodan", target)
+
+
+@_mcp.tool(description=(
+    "Check an IP, domain, URL, or file hash against VirusTotal's 70+ antivirus "
+    "and URL/domain reputation engines."
+))
+async def search_virustotal(target: str) -> str:
+    """target: IPv4 address, domain, URL, or file hash (MD5/SHA-1/SHA-256)"""
+    return await _run_mcp_tool("search_virustotal", target)
+
+
+@_mcp.tool(description=(
+    "Look up an IP host (open ports, services, ASN) or domain certificates "
+    "(SANs, issuer, validity dates) via Censys."
+))
+async def search_censys(target: str) -> str:
+    """target: IPv4 address or domain name"""
+    return await _run_mcp_tool("search_censys", target)
 
 
 # ── auth middleware ───────────────────────────────────────────────────────────

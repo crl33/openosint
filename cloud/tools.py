@@ -2,8 +2,9 @@
 OpenOSINT Cloud — tool dispatch for the gateway.
 
 ALLOW_LIST is the single source of truth for the v1 synchronous tool set.
-Scope: IP and domain infrastructure intelligence only.
-No personal-data lookups, no breach/leak sources.
+Scope: infrastructure and host/cert intelligence. No personal-data lookups,
+no breach/leak sources (e.g. search_breach / HaveIBeenPwned is deliberately
+excluded — see tests/test_cloud.py's allow-list guard test).
 
 Every tool here must complete under the Heroku 30 s HTTP router limit
 (TOOL_TIMEOUT_SECONDS = 25 s with headroom).
@@ -16,12 +17,24 @@ from typing import Any, Callable, Coroutine
 from cloud.config import TOOL_TIMEOUT_SECONDS
 from openosint.json_output import format_tool_result
 from openosint.tools.search_abuseipdb import run_abuseipdb_osint
+from openosint.tools.search_censys import run_censys_osint
 from openosint.tools.search_dns import run_dns_osint
 from openosint.tools.search_domain import run_domain_osint
 from openosint.tools.search_ip import run_ip_osint
 from openosint.tools.search_ip2location import run_ip2location_osint
+from openosint.tools.search_shodan import run_shodan_osint
+from openosint.tools.search_virustotal import run_virustotal_osint
 
 logger = logging.getLogger(__name__)
+
+
+def _censys_keys(combined: str | None) -> dict[str, str] | None:
+    """Split the tenant's stored 'api_id:api_secret' string for run_censys_osint."""
+    if not combined:
+        return None
+    api_id, _, api_secret = combined.partition(":")
+    return {"CENSYS_API_ID": api_id, "CENSYS_SECRET": api_secret}
+
 
 # Each value is a coroutine factory: (target: str, api_key: str | None) → Awaitable[str].
 ALLOW_LIST: dict[str, Callable[[str, str | None], Coroutine[Any, Any, str]]] = {
@@ -30,6 +43,9 @@ ALLOW_LIST: dict[str, Callable[[str, str | None], Coroutine[Any, Any, str]]] = {
     "search_abuseipdb":   lambda t, k: run_abuseipdb_osint(ip=t, timeout_seconds=TOOL_TIMEOUT_SECONDS, api_key=k),
     "search_dns":         lambda t, _: run_dns_osint(domain=t, timeout_seconds=TOOL_TIMEOUT_SECONDS),
     "search_domain":      lambda t, _: run_domain_osint(domain=t, timeout_seconds=TOOL_TIMEOUT_SECONDS),
+    "search_shodan":      lambda t, k: run_shodan_osint(query=t, timeout_seconds=TOOL_TIMEOUT_SECONDS, api_key=k),
+    "search_virustotal":  lambda t, k: run_virustotal_osint(target=t, timeout_seconds=TOOL_TIMEOUT_SECONDS, api_key=k),
+    "search_censys":      lambda t, k: run_censys_osint(t, TOOL_TIMEOUT_SECONDS, api_keys=_censys_keys(k)),
 }
 
 

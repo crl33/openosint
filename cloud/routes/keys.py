@@ -6,7 +6,12 @@ from pydantic import BaseModel
 
 from cloud import db, keys
 from cloud.auth import get_customer
-from cloud.key_sources import TOOL_KEY_CONFIG, KeySource
+from cloud.key_sources import (
+    TOOL_KEY_CONFIG,
+    InvalidSecretFormatError,
+    KeySource,
+    validate_secret_format,
+)
 
 router = APIRouter()
 
@@ -45,6 +50,10 @@ async def store_key_route(
         )
     if not body.secret.strip():
         raise HTTPException(status_code=400, detail="secret must not be empty")
+    try:
+        validate_secret_format(body.provider, body.secret.strip())
+    except InvalidSecretFormatError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     # TODO v1.1: lightweight validation call for ipinfo (GET /json with the token)
     await keys.store_key(customer.api_key, body.provider, body.secret.strip())
 
